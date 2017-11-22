@@ -1,0 +1,112 @@
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          lrgateway 
+# Required-Start:    $remote_fs $syslog lrserver
+# Required-Stop:     $remote_fs $syslog lrserver
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Start daemon at boot time
+# Description:       Enable service provided by daemon.
+### END INIT INFO
+
+#
+# On the RPi a GPIO is used to reset the packet forwarder and if reset_pkt_fwd is set
+# to true, a script is called to do this. 
+#
+reset_pkt_fwd=true
+reset_dir="/opt/lora-net/gateway/packet_forwarder"
+reset_cmd="./reset_pkt_fwd.sh"
+user="root"
+dir="/opt/lora-net/gateway/packet_forwarder/gps_pkt_fwd"
+cmd="./gps_pkt_fwd"
+configFile="local_conf.json"
+
+name=`basename $0`
+pid_file="/var/run/$name.pid"
+stdout_log="/tmp/$name.log"
+stderr_log="/tmp/$name.err"
+
+get_pid() {
+    cat "$pid_file"    
+}
+
+is_running() {
+    [ -f "$pid_file" ] && ps `get_pid` > /dev/null 2>&1
+}
+
+case "$1" in
+    start)
+    if is_running; then
+        echo "Already started"
+    else
+	if [ "$reset_pkt_fwd" = true ]; then
+	    echo "Reset $name"
+	    cd "$reset_dir"
+	    sudo -u "$user" $reset_cmd start $dir/$configFile >> "$stdout_log" 2>> "$stderr_log"
+	fi
+        echo "Starting $name"
+        cd "$dir"
+        sudo -u "$user" $cmd >> "$stdout_log" 2>> "$stderr_log" &
+        echo $! > "$pid_file"
+        if ! is_running; then
+            echo "Unable to start, see $stdout_log and $stderr_log"
+            exit 1
+        fi
+    fi
+    ;;
+    stop)
+    if is_running; then
+        echo -n "Stopping $name.."
+        kill `get_pid`
+        for i in {1..60}
+        do
+            if ! is_running; then
+                break
+            fi
+            
+            echo -n "."
+            sleep 1
+        done
+        echo
+        sleep 1
+	if [ "$reset_pkt_fwd" = true ]; then
+	    cd "$reset_dir"
+	    sudo -u "$user" $reset_cmd stop >> "$stdout_log" 2>> "$stderr_log"
+	fi
+        if is_running; then
+            echo "Not stopped; may still be shutting down or shutdown may have failed"
+            exit 1
+        else
+            echo "Stopped"
+            if [ -f "$pid_file" ]; then
+                rm "$pid_file"
+            fi
+        fi
+    else
+        echo "Not running"
+    fi
+    ;;
+    restart)
+    $0 stop
+    if is_running; then
+        echo "Unable to stop, will not attempt to start"
+        exit 1
+    fi
+    $0 start
+    ;;
+    status)
+    if is_running; then
+        echo "Running"
+    else
+        echo "Stopped"
+        exit 1
+    fi
+    ;;
+    *)
+    echo "Usage: $0 {start|stop|restart|status}"
+    exit 1
+    ;;
+esac
+
+exit 0
+
