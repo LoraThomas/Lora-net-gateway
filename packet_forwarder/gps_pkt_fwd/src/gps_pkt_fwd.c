@@ -813,21 +813,24 @@ int main(void)
 	freeaddrinfo(result);
 
 
-	/* look for server address w/ downstream port */
+	// look for server address w/ downstream port
 	i = getaddrinfo(serv_addr, serv_port_down, &hints, &result);
 	if (i != 0) {
-		MSG("ERROR: [down] getaddrinfo on address %s (port %s) returned %s\n", serv_addr, serv_port_up, gai_strerror(i));
+		MSG("ERROR: [down] getaddrinfo on address %s (port %s) returned %s\n",
+			serv_addr, serv_port_up, gai_strerror(i));
 		exit(EXIT_FAILURE);
 	}
 
-	/* try to open socket for downstream traffic */
+	// try to open socket for downstream traffic
 	for (q=result; q!=NULL; q=q->ai_next) {
 		sock_down = socket(q->ai_family, q->ai_socktype,q->ai_protocol);
-		if (sock_down == -1) continue; /* try next field */
-		else break; /* success, get out of loop */
+		if (sock_down == -1) continue;
+		else break;
 	}
+
 	if (q == NULL) {
-		MSG("ERROR: [down] failed to open socket to any of server %s addresses (port %s)\n", serv_addr, serv_port_up);
+		MSG("ERROR: [down] failed to open socket to any of server %s addresses (port %s)\n",
+			serv_addr, serv_port_up);
 		i = 1;
 		for (q=result; q!=NULL; q=q->ai_next) {
 			getnameinfo(q->ai_addr, q->ai_addrlen, host_name, sizeof host_name, port_name, sizeof port_name, NI_NUMERICHOST);
@@ -837,7 +840,7 @@ int main(void)
 		exit(EXIT_FAILURE);
 	}
 
-	/* connect so we can send/receive packet with the server only */
+	// connect so we can send/receive packet with the server only
 	i = connect(sock_down, q->ai_addr, q->ai_addrlen);
 	if (i != 0) {
 		MSG("ERROR: [down] connect returned %s\n", strerror(errno));
@@ -845,7 +848,7 @@ int main(void)
 	}
 	freeaddrinfo(result);
 
-	/* starting the concentrator */
+	// starting the concentrator
 	i = lgw_start();
 	if (i == LGW_HAL_SUCCESS) {
 		MSG("INFO: [main] concentrator started, packet can now be received\n");
@@ -854,7 +857,7 @@ int main(void)
 		exit(EXIT_FAILURE);
 	}
 
-	/* spawn threads to manage upstream and downstream */
+	// spawn threads to manage upstream and downstream
 	i = pthread_create( &thrid_up, NULL, (void * (*)(void *))thread_up, NULL);
 	if (i != 0) {
 		MSG("ERROR: [main] impossible to create upstream thread\n");
@@ -972,7 +975,7 @@ int main(void)
 			cp_gps_coord = reference_coord;
 		}
 
-		/* display a report */
+		// display a report
 		printf("\n##### %s #####\n", stat_timestamp);
 		printf("### [UPSTREAM] ###\n");
 		printf("# RF packets received by concentrator: %u\n", cp_nb_rx_rcv);
@@ -1044,12 +1047,12 @@ int main(void)
 /* --- THREAD 1: RECEIVING PACKETS AND FORWARDING THEM ---------------------- */
 
 void thread_up(void) {
-	int i, j; /* loop variables */
+	int i, j;
 	unsigned pkt_in_dgram; /* nb on Lora packet in the current datagram */
 
 	/* allocate memory for packet fetching and processing */
 	struct lgw_pkt_rx_s rxpkt[NB_PKT_MAX]; /* array containing inbound packets + metadata */
-	struct lgw_pkt_rx_s *p; /* pointer on a RX packet */
+	struct lgw_pkt_rx_s *p;
 	int nb_pkt;
 
 	/* local copy of GPS time reference */
@@ -1207,7 +1210,7 @@ void thread_up(void) {
 				}
 			}
 
-			/* Packet concentrator channel, RF chain & RX frequency, 34-36 useful chars */
+			// Packet concentrator channel, RF chain & RX frequency, 34-36 useful chars
 			j = snprintf((char *)(buff_up + buff_index), TX_BUFF_SIZE-buff_index, ",\"chan\":%1u,\"rfch\":%1u,\"freq\":%.6lf", p->if_chain, p->rf_chain, ((double)p->freq_hz / 1e6));
 			if (j > 0) {
 				buff_index += j;
@@ -1216,7 +1219,7 @@ void thread_up(void) {
 				exit(EXIT_FAILURE);
 			}
 
-			/* Packet status, 9-10 useful chars */
+			// Packet status, 9-10 useful chars
 			switch (p->status) {
 				case STAT_CRC_OK:
 					memcpy((void *)(buff_up + buff_index), (void *)",\"stat\":1", 9);
@@ -1451,55 +1454,52 @@ void thread_up(void) {
 	MSG("\nINFO: End of upstream thread\n");
 }
 
-/* -------------------------------------------------------------------------- */
-/* --- THREAD 2: POLLING SERVER AND EMITTING PACKETS ------------------------ */
-
 void thread_down(void) {
-	int i; /* loop variables */
+	int i;
 
-	/* configuration and metadata for an outbound packet */
+	// configuration and metadata for an outbound packet
 	struct lgw_pkt_tx_s txpkt;
-	bool sent_immediate = false; /* option to sent the packet immediately */
+	bool sent_immediate = false;
 
-	/* local timekeeping variables */
-	struct timespec send_time; /* time of the pull request */
-	struct timespec recv_time; /* time of return from recv socket call */
+	// local timekeeping variables
+	struct timespec send_time; // time of the pull request
+	struct timespec recv_time; // time of return from recv socket call
 
-	/* data buffers */
-	uint8_t buff_down[1000]; /* buffer to receive downstream packets */
-	uint8_t buff_req[12]; /* buffer to compose pull requests */
+	// data buffers
+	uint8_t buff_down[1000]; // buffer to receive downstream packets
+	uint8_t buff_req[12]; 	 // buffer to compose pull requests
 	int msg_len;
 
-	/* protocol variables */
-	uint8_t token_h; /* random token for acknowledgement matching */
-	uint8_t token_l; /* random token for acknowledgement matching */
-	bool req_ack = false; /* keep track of whether PULL_DATA was acknowledged or not */
+	// protocol variables
+	uint8_t token_h; 		// random token for acknowledgement matching
+	uint8_t token_l; 		// random token for acknowledgement matching
+	bool req_ack = false; 	// keep track of whether PULL_DATA was acknowledged or not
 
-	/* JSON parsing variables */
+	// JSON parsing variables
 	JSON_Value *root_val = NULL;
 	JSON_Object *txpk_obj = NULL;
-	JSON_Value *val = NULL; /* needed to detect the absence of some fields */
-	const char *str; /* pointer to sub-strings in the JSON data */
+	JSON_Value *val = NULL; // needed to detect the absence of some fields
+	const char *str; 		// pointer to sub-strings in the JSON data
 	short x0, x1;
 	short x2, x3, x4;
 	double x5, x6;
 
-	/* variables to send on UTC timestamp */
-	struct tref local_ref; /* time reference used for UTC <-> timestamp conversion */
-	struct tm utc_vector; /* for collecting the elements of the UTC time */
-	struct timespec utc_tx; /* UTC time that needs to be converted to timestamp */
+	// variables to send on UTC timestamp
+	struct tref local_ref; 	// time reference used for UTC <-> timestamp conversion
+	struct tm utc_vector; 	// for collecting the elements of the UTC time
+	struct timespec utc_tx; // UTC time that needs to be converted to timestamp
 
-	/* auto-quit variable */
-	uint32_t autoquit_cnt = 0; /* count the number of PULL_DATA sent since the latest PULL_ACK */
+	// auto-quit variable
+	uint32_t autoquit_cnt = 0; // count the number of PULL_DATA sent since the latest PULL_ACK
 
-	/* set downstream socket RX timeout */
+	// set downstream socket RX timeout
 	i = setsockopt(sock_down, SOL_SOCKET, SO_RCVTIMEO, (void *)&pull_timeout, sizeof pull_timeout);
 	if (i != 0) {
 		MSG("ERROR: [down] setsockopt returned %s\n", strerror(errno));
 		exit(EXIT_FAILURE);
 	}
 
-	/* pre-fill the pull request buffer with fixed fields */
+	// pre-fill the pull request buffer with fixed fields
 	buff_req[0] = PROTOCOL_VERSION;
 	buff_req[3] = PKT_PULL_DATA;
 	*(uint32_t *)(buff_req + 4) = net_mac_h;
@@ -1507,20 +1507,21 @@ void thread_down(void) {
 
 	while (!exit_sig && !quit_sig) {
 
-		/* auto-quit if the threshold is crossed */
+		// auto-quit if the threshold is crossed
 		if ((autoquit_threshold > 0) && (autoquit_cnt >= autoquit_threshold)) {
 			exit_sig = true;
-			MSG("INFO: [down] the last %u PULL_DATA were not ACKed, exiting application\n", autoquit_threshold);
+			MSG("INFO: [down] the last %u PULL_DATA were not ACKed, exiting application\n",
+				autoquit_threshold);
 			break;
 		}
 
-		/* generate random token for request */
-		token_h = (uint8_t)rand(); /* random token */
-		token_l = (uint8_t)rand(); /* random token */
+		// generate random token for request
+		token_h = (uint8_t)rand();
+		token_l = (uint8_t)rand();
 		buff_req[1] = token_h;
 		buff_req[2] = token_l;
 
-		/* send PULL request and record time */
+		// send PULL request and record time
 		send(sock_down, (void *)buff_req, sizeof buff_req, 0);
 		clock_gettime(CLOCK_MONOTONIC, &send_time);
 		pthread_mutex_lock(&mx_meas_dw);
@@ -1529,47 +1530,50 @@ void thread_down(void) {
 		req_ack = false;
 		autoquit_cnt++;
 
-		/* listen to packets and process them until a new PULL request must be sent */
+		// listen to packets and process them until a new PULL request must be sent
 		recv_time = send_time;
 		while ((int)difftimespec(recv_time, send_time) < keepalive_time) {
 
-			/* try to receive a datagram */
+			// try to receive a datagram
 			msg_len = recv(sock_down, (void *)buff_down, (sizeof buff_down)-1, 0);
 			clock_gettime(CLOCK_MONOTONIC, &recv_time);
 
-			/* if no network message was received, got back to listening sock_down socket */
+			// if no network message was received, got back to listening sock_down socket
 			if (msg_len == -1) {
-				//MSG("WARNING: [down] recv returned %s\n", strerror(errno)); /* too verbose */
+				// MSG("WARNING: [down] recv returned %s\n", strerror(errno));
 				continue;
 			}
 
-			/* if the datagram does not respect protocol, just ignore it */
-			if ((msg_len < 4) || (buff_down[0] != PROTOCOL_VERSION) || ((buff_down[3] != PKT_PULL_RESP) && (buff_down[3] != PKT_PULL_ACK))) {
+			// if the datagram does not respect protocol, just ignore it
+			if ((msg_len < 4) || (buff_down[0] != PROTOCOL_VERSION) ||
+				((buff_down[3] != PKT_PULL_RESP) && (buff_down[3] != PKT_PULL_ACK))) {
+
 				MSG("WARNING: [down] ignoring invalid packet\n");
 				continue;
 			}
 
-			/* if the datagram is an ACK, check token */
+			// if the datagram is an ACK, check token
 			if (buff_down[3] == PKT_PULL_ACK) {
 				if ((buff_down[1] == token_h) && (buff_down[2] == token_l)) {
 					if (req_ack) {
 						MSG("INFO: [down] duplicate ACK received :)\n");
-					} else { /* if that packet was not already acknowledged */
+					} else { // if that packet was not already acknowledged
 						req_ack = true;
 						autoquit_cnt = 0;
 						pthread_mutex_lock(&mx_meas_dw);
 						meas_dw_ack_rcv += 1;
 						pthread_mutex_unlock(&mx_meas_dw);
-						MSG("INFO: [down] PULL_ACK received in %i ms\n", (int)(1000 * difftimespec(recv_time, send_time)));
+						MSG("INFO: [down] PULL_ACK received in %i ms\n",
+							(int)(1000 * difftimespec(recv_time, send_time)));
 					}
-				} else { /* out-of-sync token */
+				} else {
 					MSG("INFO: [down] received out-of-sync ACK\n");
 				}
 				continue;
 			}
 
-			/* the datagram is a PULL_RESP */
-			buff_down[msg_len] = 0; /* add string terminator, just to be safe */
+			// the datagram is a PULL_RESP
+			buff_down[msg_len] = 0; // add string terminator, just to be safe
 			MSG("INFO: [down] PULL_RESP received :)\n"); /* very verbose */
 			// printf("\nJSON down: %s\n", (char *)(buff_down + 4)); /* DEBUG: display JSON payload */
 
@@ -1670,7 +1674,7 @@ void thread_down(void) {
 			}
 			txpkt.freq_hz = (uint32_t)((double)(1.0e6) * json_value_get_number(val));
 
-			/* parse RF chain used for TX (mandatory) */
+			// parse RF chain used for TX (mandatory)
 			val = json_object_get_value(txpk_obj,"rfch");
 			if (val == NULL) {
 				MSG("WARNING: [down] no mandatory \"txpk.rfch\" object in JSON, TX aborted\n");
@@ -1679,24 +1683,25 @@ void thread_down(void) {
 			}
 			txpkt.rf_chain = (uint8_t)json_value_get_number(val);
 
-			/* parse TX power (optional field) */
+			// parse TX power (optional field)
 			val = json_object_get_value(txpk_obj,"powe");
 			if (val != NULL) {
 				txpkt.rf_power = (int8_t)json_value_get_number(val);
 			}
 
-			/* Parse modulation (mandatory) */
+			// Parse modulation (mandatory)
 			str = json_object_get_string(txpk_obj, "modu");
 			if (str == NULL) {
 				MSG("WARNING: [down] no mandatory \"txpk.modu\" object in JSON, TX aborted\n");
 				json_value_free(root_val);
 				continue;
 			}
+
 			if (strcmp(str, "LORA") == 0) {
-				/* Lora modulation */
+				// Lora modulation
 				txpkt.modulation = MOD_LORA;
 
-				/* Parse Lora spreading-factor and modulation bandwidth (mandatory) */
+				// Parse Lora spreading-factor and modulation bandwidth (mandatory)
 				str = json_object_get_string(txpk_obj, "datr");
 				if (str == NULL) {
 					MSG("WARNING: [down] no mandatory \"txpk.datr\" object in JSON, TX aborted\n");
@@ -1750,13 +1755,13 @@ void thread_down(void) {
 					continue;
 				}
 
-				/* Parse signal polarity switch (optional field) */
+				// Parse signal polarity switch (optional field)
 				val = json_object_get_value(txpk_obj,"ipol");
 				if (val != NULL) {
 					txpkt.invert_pol = (bool)json_value_get_boolean(val);
 				}
 
-				/* parse Lora preamble length (optional field, optimum min value enforced) */
+				// parse Lora preamble length (optional field, optimum min value enforced)
 				val = json_object_get_value(txpk_obj,"prea");
 				if (val != NULL) {
 					i = (int)json_value_get_number(val);
@@ -1862,54 +1867,52 @@ void thread_down(void) {
 			}
 		}
 	}
+
 	MSG("\nINFO: End of downstream thread\n");
 }
-
-/* -------------------------------------------------------------------------- */
-/* --- THREAD 3: PARSE GPS MESSAGE AND KEEP GATEWAY IN SYNC ----------------- */
 
 void thread_gps(void) {
 	int i;
 
-	/* serial variables */
-	char serial_buff[128]; /* buffer to receive GPS data */
+	// serial variables
+	char serial_buff[128]; // buffer to receive GPS data
 	ssize_t nb_char;
 
-	/* variables for PPM pulse GPS synchronization */
-	enum gps_msg latest_msg; /* keep track of latest NMEA message parsed */
-	struct timespec utc_time; /* UTC time associated with PPS pulse */
-	uint32_t trig_tstamp; /* concentrator timestamp associated with PPM pulse */
+	// variables for PPM pulse GPS synchronization
+	enum gps_msg latest_msg;
+	struct timespec utc_time;
+	uint32_t trig_tstamp;
 
-	/* position variable */
+	// position variable
 	struct coord_s coord;
 	struct coord_s gpserr;
 
-	/* initialize some variables before loop */
+	// initialize some variables before loop
 	memset(serial_buff, 0, sizeof serial_buff);
 
 	while (!exit_sig && !quit_sig) {
-		/* blocking canonical read on serial port */
+		// blocking canonical read on serial port
 		nb_char = read(gps_tty_fd, serial_buff, sizeof(serial_buff)-1);
 		if (nb_char <= 0) {
 			MSG("WARNING: [gps] read() returned value <= 0\n");
 			continue;
 		} else {
-			serial_buff[nb_char] = 0; /* add null terminator, just to be sure */
+			serial_buff[nb_char] = 0;
 		}
 
-		/* parse the received NMEA */
+		// parse the received NMEA
 		latest_msg = lgw_parse_nmea(serial_buff, sizeof(serial_buff));
 
-		if (latest_msg == NMEA_RMC) { /* trigger sync only on RMC frames */
+		if (latest_msg == NMEA_RMC) {
 
-			/* get UTC time for synchronization */
+			// get UTC time for synchronization
 			i = lgw_gps_get(&utc_time, NULL, NULL);
 			if (i != LGW_GPS_SUCCESS) {
 				MSG("WARNING: [gps] could not get UTC time from GPS\n");
 				continue;
 			}
 
-			/* get timestamp captured on PPM pulse  */
+			// get timestamp captured on PPM pulse
 			pthread_mutex_lock(&mx_concent);
 			i = lgw_get_trigcnt(&trig_tstamp);
 			pthread_mutex_unlock(&mx_concent);
@@ -1918,7 +1921,7 @@ void thread_gps(void) {
 				continue;
 			}
 
-			/* try to update time reference with the new UTC & timestamp */
+			// try to update time reference with the new UTC & timestamp
 			pthread_mutex_lock(&mx_timeref);
 			i = lgw_gps_sync(&time_reference_gps, trig_tstamp, utc_time);
 			pthread_mutex_unlock(&mx_timeref);
@@ -1927,7 +1930,7 @@ void thread_gps(void) {
 				continue;
 			}
 
-			/* update gateway coordinates */
+			// update gateway coordinates
 			i = lgw_gps_get(NULL, &coord, &gpserr);
 			pthread_mutex_lock(&mx_meas_gps);
 			if (i == LGW_GPS_SUCCESS) {
@@ -1944,32 +1947,32 @@ void thread_gps(void) {
 	MSG("\nINFO: End of GPS thread\n");
 }
 
-/* -------------------------------------------------------------------------- */
-/* --- THREAD 4: CHECK TIME REFERENCE AND CALCULATE XTAL CORRECTION --------- */
-
 void thread_valid(void) {
-
-	/* GPS reference validation variables */
 	long gps_ref_age = 0;
 
-	/* main loop task */
 	while (!exit_sig && !quit_sig) {
 		wait_ms(1000);
 
-		/* calculate when the time reference was last updated */
+		// calculate when the time reference was last updated
 		pthread_mutex_lock(&mx_timeref);
 		gps_ref_age = (long)difftime(time(NULL), time_reference_gps.systime);
 		if ((gps_ref_age >= 0) && (gps_ref_age <= GPS_REF_MAX_AGE)) {
-			/* time ref is ok, validate and  */
 			gps_ref_valid = true;
 		} else {
-			/* time ref is too old, invalidate */
 			gps_ref_valid = false;
 		}
 		pthread_mutex_unlock(&mx_timeref);
 
 	}
+
 	MSG("\nINFO: End of validation thread\n");
 }
 
-/* --- EOF ------------------------------------------------------------------ */
+#if 0
+函数名称: difftime
+函数原型: double difftime(time_t time2, time_t time1)
+函数功能: 得到两次机器时间差，单位为秒
+函数返回: 时间差，单位为秒
+参数说明: time1-机器时间一,time2-机器时间二.该参数应使用time函数获得
+#endif
+
