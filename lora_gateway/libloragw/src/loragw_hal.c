@@ -186,14 +186,12 @@ static struct lgw_tx_gain_lut_s txgain_lut = {
 		.rf_power = 27
 	}};
 
-/* TX I/Q imbalance coefficients for mixer gain = 8 to 15 */
-static int8_t cal_offset_a_i[8]; /* TX I offset for radio A */
-static int8_t cal_offset_a_q[8]; /* TX Q offset for radio A */
+// TX I/Q imbalance coefficients for mixer gain = 8 to 15
+static int8_t cal_offset_a_i[8]; // TX I offset for radio A
+static int8_t cal_offset_a_q[8]; // TX Q offset for radio A
 static int8_t cal_offset_b_i[8]; /* TX I offset for radio B */
 static int8_t cal_offset_b_q[8]; /* TX Q offset for radio B */
 
-/* -------------------------------------------------------------------------- */
-/* --- PRIVATE FUNCTIONS DECLARATION ---------------------------------------- */
 
 int load_firmware(uint8_t target, uint8_t *firmware, uint16_t size);
 
@@ -205,15 +203,13 @@ int setup_sx125x(uint8_t rf_chain, uint32_t freq_hz);
 
 void lgw_constant_adjust(void);
 
-/* -------------------------------------------------------------------------- */
-/* --- PRIVATE FUNCTIONS DEFINITION ----------------------------------------- */
 
-/* size is the firmware size in bytes (not 14b words) */
+// size is the firmware size in bytes (not 14b words)
 int load_firmware(uint8_t target, uint8_t *firmware, uint16_t size) {
 	int reg_rst;
 	int reg_sel;
 
-	/* check parameters */
+	// check parameters
 	CHECK_NULL(firmware);
 	if (target == MCU_ARB) {
 		if (size != MCU_ARB_FW_BYTE) {
@@ -234,28 +230,26 @@ int load_firmware(uint8_t target, uint8_t *firmware, uint16_t size) {
 		return -1;
 	}
 
-	/* reset the targeted MCU */
+	// reset the targeted MCU
 	lgw_reg_w(reg_rst, 1);
 
-	/* set mux to access MCU program RAM and set address to 0 */
+	// set mux to access MCU program RAM and set address to 0
 	lgw_reg_w(reg_sel, 0);
 	lgw_reg_w(LGW_MCU_PROM_ADDR, 0);
 
-	/* write the program in one burst */
+	// write the program in one burst
 	lgw_reg_wb(LGW_MCU_PROM_DATA, firmware, size);
 
-	/* give back control of the MCU program ram to the MCU */
+	// give back control of the MCU program ram to the MCU
 	lgw_reg_w(reg_sel, 1);
 
 	return 0;
 }
 
-/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
-
 void sx125x_write(uint8_t channel, uint8_t addr, uint8_t data) {
 	int reg_add, reg_dat, reg_cs;
 
-	/* checking input parameters */
+	// checking input parameters
 	if (channel >= LGW_RF_CHAIN_NB) {
 		DEBUG_MSG("ERROR: INVALID RF_CHAIN\n");
 		return;
@@ -265,7 +259,7 @@ void sx125x_write(uint8_t channel, uint8_t addr, uint8_t data) {
 		return;
 	}
 
-	/* selecting the target radio */
+	// selecting the target radio
 	switch (channel) {
 		case 0:
 			reg_add = LGW_SPI_RADIO_A__ADDR;
@@ -284,9 +278,9 @@ void sx125x_write(uint8_t channel, uint8_t addr, uint8_t data) {
 			return;
 	}
 
-	/* SPI master data write procedure */
+	// SPI master data write procedure
 	lgw_reg_w(reg_cs, 0);
-	lgw_reg_w(reg_add, 0x80 | addr); /* MSB at 1 for write operation */
+	lgw_reg_w(reg_add, 0x80 | addr); // MSB at 1 for write operation
 	lgw_reg_w(reg_dat, data);
 	lgw_reg_w(reg_cs, 1);
 	lgw_reg_w(reg_cs, 0);
@@ -294,13 +288,11 @@ void sx125x_write(uint8_t channel, uint8_t addr, uint8_t data) {
 	return;
 }
 
-/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
-
 uint8_t sx125x_read(uint8_t channel, uint8_t addr) {
 	int reg_add, reg_dat, reg_cs, reg_rb;
 	int32_t read_value;
 
-	/* checking input parameters */
+	// checking input parameters
 	if (channel >= LGW_RF_CHAIN_NB) {
 		DEBUG_MSG("ERROR: INVALID RF_CHAIN\n");
 		return 0;
@@ -310,7 +302,7 @@ uint8_t sx125x_read(uint8_t channel, uint8_t addr) {
 		return 0;
 	}
 
-	/* selecting the target radio */
+	// selecting the target radio
 	switch (channel) {
 		case 0:
 			reg_add = LGW_SPI_RADIO_A__ADDR;
@@ -331,7 +323,7 @@ uint8_t sx125x_read(uint8_t channel, uint8_t addr) {
 			return 0;
 	}
 
-	/* SPI master data read procedure */
+	// SPI master data read procedure
 	lgw_reg_w(reg_cs, 0);
 	lgw_reg_w(reg_add, addr); /* MSB at 0 for read operation */
 	lgw_reg_w(reg_dat, 0);
@@ -341,8 +333,6 @@ uint8_t sx125x_read(uint8_t channel, uint8_t addr) {
 
 	return (uint8_t)read_value;
 }
-
-/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 
 int setup_sx125x(uint8_t rf_chain, uint32_t freq_hz) {
 	uint32_t part_int = 0;
@@ -354,10 +344,10 @@ int setup_sx125x(uint8_t rf_chain, uint32_t freq_hz) {
 		return -1;
 	}
 
-	/* Get version to identify SX1255/57 silicon revision */
+	// Get version to identify SX1255/57 silicon revision
 	DEBUG_PRINTF("Note: SX125x #%d version register returned 0x%02x\n", rf_chain, sx125x_read(rf_chain, 0x07));
 
-	/* General radio setup */
+	// General radio setup
 	if (rf_clkout == rf_chain) {
 		sx125x_write(rf_chain, 0x10, SX125x_TX_DAC_CLK_SEL + 2);
 		DEBUG_PRINTF("Note: SX125x #%d clock output enabled\n", rf_chain);
@@ -379,36 +369,36 @@ int setup_sx125x(uint8_t rf_chain, uint32_t freq_hz) {
 	}
 
 	if (rf_enable[rf_chain] == true) {
-		/* Tx gain and trim */
+		// Tx gain and trim
 		sx125x_write(rf_chain, 0x08, SX125x_TX_MIX_GAIN + SX125x_TX_DAC_GAIN*16);
 		sx125x_write(rf_chain, 0x0A, SX125x_TX_ANA_BW + SX125x_TX_PLL_BW*32);
 		sx125x_write(rf_chain, 0x0B, SX125x_TX_DAC_BW);
 
-		/* Rx gain and trim */
+		// Rx gain and trim
 		sx125x_write(rf_chain, 0x0C, SX125x_LNA_ZIN + SX125x_RX_BB_GAIN*2 + SX125x_RX_LNA_GAIN*32);
 		sx125x_write(rf_chain, 0x0D, SX125x_RX_BB_BW + SX125x_RX_ADC_TRIM*4 + SX125x_RX_ADC_BW*32);
 		sx125x_write(rf_chain, 0x0E, SX125x_ADC_TEMP + SX125x_RX_PLL_BW*2);
 
-		/* set RX PLL frequency */
+		// set RX PLL frequency
 		switch (rf_radio_type[rf_chain]) {
 			case LGW_RADIO_TYPE_SX1255:
-				part_int = freq_hz / (SX125x_32MHz_FRAC << 7); /* integer part, gives the MSB */
-				part_frac = ((freq_hz % (SX125x_32MHz_FRAC << 7)) << 9) / SX125x_32MHz_FRAC; /* fractional part, gives middle part and LSB */
+				part_int = freq_hz / (SX125x_32MHz_FRAC << 7);
+				part_frac = ((freq_hz % (SX125x_32MHz_FRAC << 7)) << 9) / SX125x_32MHz_FRAC; // fractional part, gives middle part and LSB
 				break;
 			case LGW_RADIO_TYPE_SX1257:
-				part_int = freq_hz / (SX125x_32MHz_FRAC << 8); /* integer part, gives the MSB */
-				part_frac = ((freq_hz % (SX125x_32MHz_FRAC << 8)) << 8) / SX125x_32MHz_FRAC; /* fractional part, gives middle part and LSB */
+				part_int = freq_hz / (SX125x_32MHz_FRAC << 8);
+				part_frac = ((freq_hz % (SX125x_32MHz_FRAC << 8)) << 8) / SX125x_32MHz_FRAC; // fractional part, gives middle part and LSB
 				break;
 			default:
 				DEBUG_PRINTF("ERROR: UNEXPECTED VALUE %d FOR RADIO TYPE\n", rf_radio_type[rf_chain]);
 				break;
 		}
 
-		sx125x_write(rf_chain, 0x01,0xFF & part_int); /* Most Significant Byte */
-		sx125x_write(rf_chain, 0x02,0xFF & (part_frac >> 8)); /* middle byte */
-		sx125x_write(rf_chain, 0x03,0xFF & part_frac); /* Least Significant Byte */
+		sx125x_write(rf_chain, 0x01,0xFF & part_int); 			// Most Significant Byte
+		sx125x_write(rf_chain, 0x02,0xFF & (part_frac >> 8)); 	// middle byte
+		sx125x_write(rf_chain, 0x03,0xFF & part_frac); 			// Least Significant Byte
 
-		/* start and PLL lock */
+		// start and PLL lock
 		do {
 			if (cpt_attempts >= PLL_LOCK_MAX_ATTEMPTS) {
 				DEBUG_MSG("ERROR: FAIL TO LOCK PLL\n");
@@ -427,168 +417,166 @@ int setup_sx125x(uint8_t rf_chain, uint32_t freq_hz) {
 	return 0;
 }
 
-/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
-
 void lgw_constant_adjust(void) {
 
-	/* I/Q path setup */
-	// lgw_reg_w(LGW_RX_INVERT_IQ,0); /* default 0 */
-	// lgw_reg_w(LGW_MODEM_INVERT_IQ,1); /* default 1 */
-	// lgw_reg_w(LGW_CHIRP_INVERT_RX,1); /* default 1 */
-	// lgw_reg_w(LGW_RX_EDGE_SELECT,0); /* default 0 */
+	// I/Q path setup
+	// lgw_reg_w(LGW_RX_INVERT_IQ,0); 			/* default 0 */
+	// lgw_reg_w(LGW_MODEM_INVERT_IQ,1); 		/* default 1 */
+	// lgw_reg_w(LGW_CHIRP_INVERT_RX,1); 		/* default 1 */
+	// lgw_reg_w(LGW_RX_EDGE_SELECT,0); 		/* default 0 */
 	// lgw_reg_w(LGW_MBWSSF_MODEM_INVERT_IQ,0); /* default 0 */
-	// lgw_reg_w(LGW_DC_NOTCH_EN,1); /* default 1 */
-	lgw_reg_w(LGW_RSSI_BB_FILTER_ALPHA,6); /* default 7 */
-	lgw_reg_w(LGW_RSSI_DEC_FILTER_ALPHA,7); /* default 5 */
-	lgw_reg_w(LGW_RSSI_CHANN_FILTER_ALPHA,7); /* default 8 */
-	lgw_reg_w(LGW_RSSI_BB_DEFAULT_VALUE,23); /* default 32 */
+	// lgw_reg_w(LGW_DC_NOTCH_EN,1); 			/* default 1 */
+	lgw_reg_w(LGW_RSSI_BB_FILTER_ALPHA,6); 		/* default 7 */
+	lgw_reg_w(LGW_RSSI_DEC_FILTER_ALPHA,7); 	/* default 5 */
+	lgw_reg_w(LGW_RSSI_CHANN_FILTER_ALPHA,7); 	/* default 8 */
+	lgw_reg_w(LGW_RSSI_BB_DEFAULT_VALUE,23); 	/* default 32 */
 	lgw_reg_w(LGW_RSSI_CHANN_DEFAULT_VALUE,85); /* default 100 */
-	lgw_reg_w(LGW_RSSI_DEC_DEFAULT_VALUE,66); /* default 100 */
-	lgw_reg_w(LGW_DEC_GAIN_OFFSET,7); /* default 8 */
-	lgw_reg_w(LGW_CHAN_GAIN_OFFSET,6); /* default 7 */
+	lgw_reg_w(LGW_RSSI_DEC_DEFAULT_VALUE,66); 	/* default 100 */
+	lgw_reg_w(LGW_DEC_GAIN_OFFSET,7); 			/* default 8 */
+	lgw_reg_w(LGW_CHAN_GAIN_OFFSET,6); 			/* default 7 */
 
-	/* Correlator setup */
-	// lgw_reg_w(LGW_CORR_DETECT_EN,126); /* default 126 */
-	// lgw_reg_w(LGW_CORR_NUM_SAME_PEAK,4); /* default 4 */
-	// lgw_reg_w(LGW_CORR_MAC_GAIN,5); /* default 5 */
-	// lgw_reg_w(LGW_CORR_SAME_PEAKS_OPTION_SF6,0); /* default 0 */
-	// lgw_reg_w(LGW_CORR_SAME_PEAKS_OPTION_SF7,1); /* default 1 */
-	// lgw_reg_w(LGW_CORR_SAME_PEAKS_OPTION_SF8,1); /* default 1 */
-	// lgw_reg_w(LGW_CORR_SAME_PEAKS_OPTION_SF9,1); /* default 1 */
-	// lgw_reg_w(LGW_CORR_SAME_PEAKS_OPTION_SF10,1); /* default 1 */
-	// lgw_reg_w(LGW_CORR_SAME_PEAKS_OPTION_SF11,1); /* default 1 */
-	// lgw_reg_w(LGW_CORR_SAME_PEAKS_OPTION_SF12,1); /* default 1 */
-	// lgw_reg_w(LGW_CORR_SIG_NOISE_RATIO_SF6,4); /* default 4 */
-	// lgw_reg_w(LGW_CORR_SIG_NOISE_RATIO_SF7,4); /* default 4 */
-	// lgw_reg_w(LGW_CORR_SIG_NOISE_RATIO_SF8,4); /* default 4 */
-	// lgw_reg_w(LGW_CORR_SIG_NOISE_RATIO_SF9,4); /* default 4 */
-	// lgw_reg_w(LGW_CORR_SIG_NOISE_RATIO_SF10,4); /* default 4 */
-	// lgw_reg_w(LGW_CORR_SIG_NOISE_RATIO_SF11,4); /* default 4 */
-	// lgw_reg_w(LGW_CORR_SIG_NOISE_RATIO_SF12,4); /* default 4 */
+	// Correlator setup
+	// lgw_reg_w(LGW_CORR_DETECT_EN,126); 		/* default 126 */
+	// lgw_reg_w(LGW_CORR_NUM_SAME_PEAK,4); 	/* default 4 */
+	// lgw_reg_w(LGW_CORR_MAC_GAIN,5); 			/* default 5 */
+	// lgw_reg_w(LGW_CORR_SAME_PEAKS_OPTION_SF6,0); 	/* default 0 */
+	// lgw_reg_w(LGW_CORR_SAME_PEAKS_OPTION_SF7,1); 	/* default 1 */
+	// lgw_reg_w(LGW_CORR_SAME_PEAKS_OPTION_SF8,1); 	/* default 1 */
+	// lgw_reg_w(LGW_CORR_SAME_PEAKS_OPTION_SF9,1); 	/* default 1 */
+	// lgw_reg_w(LGW_CORR_SAME_PEAKS_OPTION_SF10,1); 	/* default 1 */
+	// lgw_reg_w(LGW_CORR_SAME_PEAKS_OPTION_SF11,1); 	/* default 1 */
+	// lgw_reg_w(LGW_CORR_SAME_PEAKS_OPTION_SF12,1); 	/* default 1 */
+	// lgw_reg_w(LGW_CORR_SIG_NOISE_RATIO_SF6,4); 	/* default 4 */
+	// lgw_reg_w(LGW_CORR_SIG_NOISE_RATIO_SF7,4); 	/* default 4 */
+	// lgw_reg_w(LGW_CORR_SIG_NOISE_RATIO_SF8,4); 	/* default 4 */
+	// lgw_reg_w(LGW_CORR_SIG_NOISE_RATIO_SF9,4); 	/* default 4 */
+	// lgw_reg_w(LGW_CORR_SIG_NOISE_RATIO_SF10,4); 	/* default 4 */
+	// lgw_reg_w(LGW_CORR_SIG_NOISE_RATIO_SF11,4); 	/* default 4 */
+	// lgw_reg_w(LGW_CORR_SIG_NOISE_RATIO_SF12,4); 	/* default 4 */
 
-	/* LoRa 'multi' demodulators setup */
-	// lgw_reg_w(LGW_PREAMBLE_SYMB1_NB,10); /* default 10 */
-	// lgw_reg_w(LGW_FREQ_TO_TIME_INVERT,29); /* default 29 */
-	// lgw_reg_w(LGW_FRAME_SYNCH_GAIN,1); /* default 1 */
-	// lgw_reg_w(LGW_SYNCH_DETECT_TH,1); /* default 1 */
-	// lgw_reg_w(LGW_ZERO_PAD,0); /* default 0 */
-	lgw_reg_w(LGW_SNR_AVG_CST,3); /* default 2 */
-	if (lorawan_public) { /* LoRa network */
-		lgw_reg_w(LGW_FRAME_SYNCH_PEAK1_POS,3); /* default 1 */
-		lgw_reg_w(LGW_FRAME_SYNCH_PEAK2_POS,4); /* default 2 */
-	} else { /* private network */
-		lgw_reg_w(LGW_FRAME_SYNCH_PEAK1_POS,1); /* default 1 */
-		lgw_reg_w(LGW_FRAME_SYNCH_PEAK2_POS,2); /* default 2 */
+	// LoRa 'multi' demodulators setup
+	// lgw_reg_w(LGW_PREAMBLE_SYMB1_NB,10); 		/* default 10 */
+	// lgw_reg_w(LGW_FREQ_TO_TIME_INVERT,29); 		/* default 29 */
+	// lgw_reg_w(LGW_FRAME_SYNCH_GAIN,1); 			/* default 1 */
+	// lgw_reg_w(LGW_SYNCH_DETECT_TH,1); 			/* default 1 */
+	// lgw_reg_w(LGW_ZERO_PAD,0); 					/* default 0 */
+	lgw_reg_w(LGW_SNR_AVG_CST,3); 					/* default 2 */
+
+	if (lorawan_public) { 	// LoRa network
+		lgw_reg_w(LGW_FRAME_SYNCH_PEAK1_POS,3); 	/* default 1 */
+		lgw_reg_w(LGW_FRAME_SYNCH_PEAK2_POS,4); 	/* default 2 */
+	} else { 				// private network
+		lgw_reg_w(LGW_FRAME_SYNCH_PEAK1_POS,1); 	/* default 1 */
+		lgw_reg_w(LGW_FRAME_SYNCH_PEAK2_POS,2); 	/* default 2 */
 	}
 
-	// lgw_reg_w(LGW_PREAMBLE_FINE_TIMING_GAIN,1); /* default 1 */
-	// lgw_reg_w(LGW_ONLY_CRC_EN,1); /* default 1 */
-	// lgw_reg_w(LGW_PAYLOAD_FINE_TIMING_GAIN,2); /* default 2 */
-	// lgw_reg_w(LGW_TRACKING_INTEGRAL,0); /* default 0 */
-	// lgw_reg_w(LGW_ADJUST_MODEM_START_OFFSET_RDX8,0); /* default 0 */
+	// lgw_reg_w(LGW_PREAMBLE_FINE_TIMING_GAIN,1); 	/* default 1 */
+	// lgw_reg_w(LGW_ONLY_CRC_EN,1); 				/* default 1 */
+	// lgw_reg_w(LGW_PAYLOAD_FINE_TIMING_GAIN,2); 	/* default 2 */
+	// lgw_reg_w(LGW_TRACKING_INTEGRAL,0); 			/* default 0 */
+	// lgw_reg_w(LGW_ADJUST_MODEM_START_OFFSET_RDX8,0); 		/* default 0 */
 	// lgw_reg_w(LGW_ADJUST_MODEM_START_OFFSET_SF12_RDX4,4092); /* default 4092 */
-	// lgw_reg_w(LGW_MAX_PAYLOAD_LEN,255); /* default 255 */
+	// lgw_reg_w(LGW_MAX_PAYLOAD_LEN,255); 						/* default 255 */
 
-	/* LoRa standalone 'MBWSSF' demodulator setup */
-	// lgw_reg_w(LGW_MBWSSF_PREAMBLE_SYMB1_NB,10); /* default 10 */
-	// lgw_reg_w(LGW_MBWSSF_FREQ_TO_TIME_INVERT,29); /* default 29 */
-	// lgw_reg_w(LGW_MBWSSF_FRAME_SYNCH_GAIN,1); /* default 1 */
-	// lgw_reg_w(LGW_MBWSSF_SYNCH_DETECT_TH,1); /* default 1 */
-	// lgw_reg_w(LGW_MBWSSF_ZERO_PAD,0); /* default 0 */
+	// LoRa standalone 'MBWSSF' demodulator setup
+	// lgw_reg_w(LGW_MBWSSF_PREAMBLE_SYMB1_NB,10); 		/* default 10 */
+	// lgw_reg_w(LGW_MBWSSF_FREQ_TO_TIME_INVERT,29); 	/* default 29 */
+	// lgw_reg_w(LGW_MBWSSF_FRAME_SYNCH_GAIN,1); 		/* default 1 */
+	// lgw_reg_w(LGW_MBWSSF_SYNCH_DETECT_TH,1); 		/* default 1 */
+	// lgw_reg_w(LGW_MBWSSF_ZERO_PAD,0); 				/* default 0 */
 	if (lorawan_public) { /* LoRa network */
-		lgw_reg_w(LGW_MBWSSF_FRAME_SYNCH_PEAK1_POS,3); /* default 1 */
-		lgw_reg_w(LGW_MBWSSF_FRAME_SYNCH_PEAK2_POS,4); /* default 2 */
+		lgw_reg_w(LGW_MBWSSF_FRAME_SYNCH_PEAK1_POS,3); 	/* default 1 */
+		lgw_reg_w(LGW_MBWSSF_FRAME_SYNCH_PEAK2_POS,4); 	/* default 2 */
 	} else {
-		lgw_reg_w(LGW_MBWSSF_FRAME_SYNCH_PEAK1_POS,1); /* default 1 */
-		lgw_reg_w(LGW_MBWSSF_FRAME_SYNCH_PEAK2_POS,2); /* default 2 */
+		lgw_reg_w(LGW_MBWSSF_FRAME_SYNCH_PEAK1_POS,1); 	/* default 1 */
+		lgw_reg_w(LGW_MBWSSF_FRAME_SYNCH_PEAK2_POS,2); 	/* default 2 */
 	}
-	// lgw_reg_w(LGW_MBWSSF_ONLY_CRC_EN,1); /* default 1 */
-	// lgw_reg_w(LGW_MBWSSF_PAYLOAD_FINE_TIMING_GAIN,2); /* default 2 */
-	// lgw_reg_w(LGW_MBWSSF_PREAMBLE_FINE_TIMING_GAIN,1); /* default 1 */
-	// lgw_reg_w(LGW_MBWSSF_TRACKING_INTEGRAL,0); /* default 0 */
-	// lgw_reg_w(LGW_MBWSSF_AGC_FREEZE_ON_DETECT,1); /* default 1 */
 
-	/* FSK datapath setup */
-	lgw_reg_w(LGW_FSK_RX_INVERT,1); /* default 0 */
-	lgw_reg_w(LGW_FSK_MODEM_INVERT_IQ,1); /* default 0 */
+	// lgw_reg_w(LGW_MBWSSF_ONLY_CRC_EN,1); 				/* default 1 */
+	// lgw_reg_w(LGW_MBWSSF_PAYLOAD_FINE_TIMING_GAIN,2); 	/* default 2 */
+	// lgw_reg_w(LGW_MBWSSF_PREAMBLE_FINE_TIMING_GAIN,1); 	/* default 1 */
+	// lgw_reg_w(LGW_MBWSSF_TRACKING_INTEGRAL,0); 			/* default 0 */
+	// lgw_reg_w(LGW_MBWSSF_AGC_FREEZE_ON_DETECT,1); 		/* default 1 */
 
-	/* FSK demodulator setup */
-	lgw_reg_w(LGW_FSK_RSSI_LENGTH,4); /* default 0 */
-	lgw_reg_w(LGW_FSK_PKT_MODE,1); /* variable length, default 0 */
-	lgw_reg_w(LGW_FSK_CRC_EN,1); /* default 0 */
-	lgw_reg_w(LGW_FSK_DCFREE_ENC,2); /* default 0 */
-	// lgw_reg_w(LGW_FSK_CRC_IBM,0); /* default 0 */
-	lgw_reg_w(LGW_FSK_ERROR_OSR_TOL,10); /* default 0 */
-	lgw_reg_w(LGW_FSK_PKT_LENGTH,255); /* max packet length in variable length mode */
-	// lgw_reg_w(LGW_FSK_NODE_ADRS,0); /* default 0 */
-	// lgw_reg_w(LGW_FSK_BROADCAST,0); /* default 0 */
-	// lgw_reg_w(LGW_FSK_AUTO_AFC_ON,0); /* default 0 */
+	// FSK datapath setup
+	lgw_reg_w(LGW_FSK_RX_INVERT,1); 						/* default 0 */
+	lgw_reg_w(LGW_FSK_MODEM_INVERT_IQ,1); 					/* default 0 */
+
+	// FSK demodulator setup
+	lgw_reg_w(LGW_FSK_RSSI_LENGTH,4); 		/* default 0 */
+	lgw_reg_w(LGW_FSK_PKT_MODE,1); 			/* variable length, default 0 */
+	lgw_reg_w(LGW_FSK_CRC_EN,1); 			/* default 0 */
+	lgw_reg_w(LGW_FSK_DCFREE_ENC,2); 		/* default 0 */
+	// lgw_reg_w(LGW_FSK_CRC_IBM,0); 		/* default 0 */
+	lgw_reg_w(LGW_FSK_ERROR_OSR_TOL,10); 	/* default 0 */
+	lgw_reg_w(LGW_FSK_PKT_LENGTH,255); 		/* max packet length in variable length mode */
+	// lgw_reg_w(LGW_FSK_NODE_ADRS,0); 		/* default 0 */
+	// lgw_reg_w(LGW_FSK_BROADCAST,0); 		/* default 0 */
+	// lgw_reg_w(LGW_FSK_AUTO_AFC_ON,0); 	/* default 0 */
 	lgw_reg_w(LGW_FSK_PATTERN_TIMEOUT_CFG,128); /* sync timeout (allow 8 bytes preamble + 8 bytes sync word, default 0 */
 
-	/* TX general parameters */
+	// TX general parameters
 	lgw_reg_w(LGW_TX_START_DELAY, TX_START_DELAY); /* default 0 */
 
-	/* TX LoRa */
-	// lgw_reg_w(LGW_TX_MODE,0); /* default 0 */
-	lgw_reg_w(LGW_TX_SWAP_IQ,1); /* "normal" polarity; default 0 */
+	// TX LoRa
+	// lgw_reg_w(LGW_TX_MODE,0); 					/* default 0 */
+	lgw_reg_w(LGW_TX_SWAP_IQ,1); 					/* "normal" polarity; default 0 */
 	if (lorawan_public) { /* LoRa network */
-		lgw_reg_w(LGW_TX_FRAME_SYNCH_PEAK1_POS,3); /* default 1 */
-		lgw_reg_w(LGW_TX_FRAME_SYNCH_PEAK2_POS,4); /* default 2 */
+		lgw_reg_w(LGW_TX_FRAME_SYNCH_PEAK1_POS,3); 	/* default 1 */
+		lgw_reg_w(LGW_TX_FRAME_SYNCH_PEAK2_POS,4); 	/* default 2 */
 	} else { /* Private network */
 		lgw_reg_w(LGW_TX_FRAME_SYNCH_PEAK1_POS,1); /* default 1 */
 		lgw_reg_w(LGW_TX_FRAME_SYNCH_PEAK2_POS,2); /* default 2 */
 	}
 
-	/* TX FSK */
-	// lgw_reg_w(LGW_FSK_TX_GAUSSIAN_EN,1); /* default 1 */
+	// TX FSK
+	// lgw_reg_w(LGW_FSK_TX_GAUSSIAN_EN,1); 		/* default 1 */
 	lgw_reg_w(LGW_FSK_TX_GAUSSIAN_SELECT_BT,2); /* Gaussian filter always on TX, default 0 */
-	// lgw_reg_w(LGW_FSK_TX_PATTERN_EN,1); /* default 1 */
-	// lgw_reg_w(LGW_FSK_TX_PREAMBLE_SEQ,0); /* default 0 */
+	// lgw_reg_w(LGW_FSK_TX_PATTERN_EN,1); 			/* default 1 */
+	// lgw_reg_w(LGW_FSK_TX_PREAMBLE_SEQ,0); 		/* default 0 */
 
 	return;
 }
 
-/* -------------------------------------------------------------------------- */
-/* --- PUBLIC FUNCTIONS DEFINITION ------------------------------------------ */
-
 int lgw_board_setconf(struct lgw_conf_board_s conf) {
 
-	/* check if the concentrator is running */
+	// check if the concentrator is running
 	if (lgw_is_started == true) {
 		DEBUG_MSG("ERROR: CONCENTRATOR IS RUNNING, STOP IT BEFORE TOUCHING CONFIGURATION\n");
 		return LGW_HAL_ERROR;
 	}
 
-	/* set internal config according to parameters */
+	// set internal config according to parameters
 	lorawan_public = conf.lorawan_public;
 	rf_clkout = conf.clksrc;
 
-	DEBUG_PRINTF("Note: board configuration; lorawan_public:%d, clksrc:%d\n", lorawan_public, rf_clkout);
+	DEBUG_PRINTF("Note: board configuration; lorawan_public:%d, clksrc:%d\n",
+		lorawan_public, rf_clkout);
 
 	return LGW_HAL_SUCCESS;
 }
 
 int lgw_rxrf_setconf(uint8_t rf_chain, struct lgw_conf_rxrf_s conf) {
 
-	/* check if the concentrator is running */
+	// check if the concentrator is running
 	if (lgw_is_started == true) {
 		DEBUG_MSG("ERROR: CONCENTRATOR IS RUNNING, STOP IT BEFORE TOUCHING CONFIGURATION\n");
 		return LGW_HAL_ERROR;
 	}
 
-	/* check input range (segfault prevention) */
+	// check input range (segfault prevention)
 	if (rf_chain >= LGW_RF_CHAIN_NB) {
 		DEBUG_MSG("ERROR: NOT A VALID RF_CHAIN NUMBER\n");
 		return LGW_HAL_ERROR;
 	}
 
-	/* check if radio type is supported */
+	// check if radio type is supported
 	if ((conf.type != LGW_RADIO_TYPE_SX1255) && (conf.type != LGW_RADIO_TYPE_SX1257)) {
 		DEBUG_MSG("ERROR: NOT A VALID RADIO TYPE\n");
 		return LGW_HAL_ERROR;
 	}
 
-	/* set internal config according to parameters */
+	// set internal config according to parameters
 	rf_enable[rf_chain] = conf.enable;
 	rf_rx_freq[rf_chain] = conf.freq_hz;
 	rf_rssi_offset[rf_chain] = conf.rssi_offset;
@@ -600,7 +588,6 @@ int lgw_rxrf_setconf(uint8_t rf_chain, struct lgw_conf_rxrf_s conf) {
 	return LGW_HAL_SUCCESS;
 }
 
-/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 
 int lgw_rxif_setconf(uint8_t if_chain, struct lgw_conf_rxif_s conf) {
 
@@ -786,8 +773,6 @@ int lgw_txgain_setconf(struct lgw_tx_gain_lut_s *conf) {
 	return LGW_HAL_SUCCESS;
 }
 
-/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
-
 int lgw_start(void) {
 	int i;
 	int reg_stat;
@@ -875,7 +860,7 @@ int lgw_start(void) {
 	lgw_reg_w(LGW_DBG_AGC_MCU_RAM_ADDR, FW_VERSION_ADDR);
 	lgw_reg_r(LGW_DBG_AGC_MCU_RAM_DATA, &read_val);
 	fw_version = (uint8_t)read_val;
-	
+
         printf("hufan ss = %d \n",fw_version);
         if (fw_version != FW_VERSION_CAL) {
 		printf("ERROR: Version of calibration firmware not expected, actual:%d expected:%d\n", fw_version, FW_VERSION_CAL);
@@ -1144,7 +1129,6 @@ int lgw_start(void) {
 	return LGW_HAL_SUCCESS;
 }
 
-/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 
 int lgw_stop(void) {
 	lgw_soft_reset();
@@ -1153,8 +1137,6 @@ int lgw_stop(void) {
 	lgw_is_started = false;
 	return LGW_HAL_SUCCESS;
 }
-
-/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 
 int lgw_receive(uint8_t max_pkt, struct lgw_pkt_rx_s *pkt_data) {
 	int nb_pkt_fetch; /* loop variable and return value */
@@ -1363,11 +1345,9 @@ int lgw_receive(uint8_t max_pkt, struct lgw_pkt_rx_s *pkt_data) {
 	return nb_pkt_fetch;
 }
 
-/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
-
 int lgw_send(struct lgw_pkt_tx_s pkt_data) {
 	int i;
-	uint8_t buff[256+TX_METADATA_NB]; /* buffer to prepare the packet to send + metadata before SPI write burst */
+	uint8_t buff[256+TX_METADATA_NB];
 	uint32_t part_int = 0; /* integer part for PLL register value calculation */
 	uint32_t part_frac = 0; /* fractional part for PLL register value calculation */
 	uint16_t fsk_dr_div; /* divider to configure for target datarate */
@@ -1377,19 +1357,19 @@ int lgw_send(struct lgw_pkt_tx_s pkt_data) {
 	uint8_t target_mix_gain = 0; /* used to select the proper I/Q offset correction */
 	uint32_t count_trig; /* timestamp value in trigger mode corrected for TX start delay */
 
-	/* check if the concentrator is running */
+	// check if the concentrator is running
 	if (lgw_is_started == false) {
 		DEBUG_MSG("ERROR: CONCENTRATOR IS NOT RUNNING, START IT BEFORE SENDING\n");
 		return LGW_HAL_ERROR;
 	}
 
-	/* check input range (segfault prevention) */
+	// check input range (segfault prevention)
 	if (pkt_data.rf_chain >= LGW_RF_CHAIN_NB) {
 		DEBUG_MSG("ERROR: INVALID RF_CHAIN TO SEND PACKETS\n");
 		return LGW_HAL_ERROR;
 	}
 
-	/* check input variables */
+	// check input variables
 	if (rf_tx_enable[pkt_data.rf_chain] == false) {
 		DEBUG_MSG("ERROR: SELECTED RF_CHAIN IS DISABLED FOR TX ON SELECTED BOARD\n");
 		return LGW_HAL_ERROR;
@@ -1437,14 +1417,14 @@ int lgw_send(struct lgw_pkt_tx_s pkt_data) {
 		return LGW_HAL_ERROR;
 	}
 
-	/* interpretation of TX power */
+	// interpretation of TX power
 	for (pow_index = txgain_lut.size-1; pow_index > 0; pow_index--) {
 		if (txgain_lut.lut[pow_index].rf_power <= pkt_data.rf_power) {
 			break;
 		}
 	}
 
-	/* loading TX imbalance correction */
+	// loading TX imbalance correction
 	target_mix_gain = txgain_lut.lut[pow_index].mix_gain;
 	if (pkt_data.rf_chain == 0) { /* use radio A calibration table */
 		lgw_reg_w(LGW_TX_OFFSET_I, cal_offset_a_i[target_mix_gain - 8]);
@@ -1454,34 +1434,33 @@ int lgw_send(struct lgw_pkt_tx_s pkt_data) {
 		lgw_reg_w(LGW_TX_OFFSET_Q, cal_offset_b_q[target_mix_gain - 8]);
 	}
 
-	/* Set digital gain from LUT */
+	// Set digital gain from LUT
 	lgw_reg_w(LGW_TX_GAIN, txgain_lut.lut[pow_index].dig_gain);
 
-	/* fixed metadata, useful payload and misc metadata compositing */
-	transfer_size = TX_METADATA_NB + pkt_data.size; /*  */
-	payload_offset = TX_METADATA_NB; /* start the payload just after the metadata */
+	// fixed metadata, useful payload and misc metadata compositing
+	transfer_size = TX_METADATA_NB + pkt_data.size;
+	payload_offset = TX_METADATA_NB;
 
-	/* metadata 0 to 2, TX PLL frequency */
-	switch (rf_radio_type[0]) { /* we assume that there is only one radio type on the board */
+	// metadata 0 to 2, TX PLL frequency
+	switch (rf_radio_type[0]) {
 		case LGW_RADIO_TYPE_SX1255:
-			part_int = pkt_data.freq_hz / (SX125x_32MHz_FRAC << 7); /* integer part, gives the MSB */
-			part_frac = ((pkt_data.freq_hz % (SX125x_32MHz_FRAC << 7)) << 9) / SX125x_32MHz_FRAC; /* fractional part, gives middle part and LSB */
+			part_int = pkt_data.freq_hz / (SX125x_32MHz_FRAC << 7);
+			part_frac = ((pkt_data.freq_hz % (SX125x_32MHz_FRAC << 7)) << 9) / SX125x_32MHz_FRAC;
 			break;
 		case LGW_RADIO_TYPE_SX1257:
-			part_int = pkt_data.freq_hz / (SX125x_32MHz_FRAC << 8); /* integer part, gives the MSB */
-			part_frac = ((pkt_data.freq_hz % (SX125x_32MHz_FRAC << 8)) << 8) / SX125x_32MHz_FRAC; /* fractional part, gives middle part and LSB */
-			break;
+			part_int = pkt_data.freq_hz / (SX125x_32MHz_FRAC << 8);
+			part_frac = ((pkt_data.freq_hz % (SX125x_32MHz_FRAC << 8)) << 8) / SX125x_32MHz_FRAC;
 		default:
 			DEBUG_PRINTF("ERROR: UNEXPECTED VALUE %d FOR RADIO TYPE\n", rf_radio_type[0]);
 			break;
 	}
 
-	buff[0] = 0xFF & part_int; /* Most Significant Byte */
-	buff[1] = 0xFF & (part_frac >> 8); /* middle byte */
-	buff[2] = 0xFF & part_frac; /* Least Significant Byte */
+	buff[0] = 0xFF & part_int; 			// Most Significant Byte
+	buff[1] = 0xFF & (part_frac >> 8);  // middle byte
+	buff[2] = 0xFF & part_frac; 		// Least Significant Byte
 
-	/* metadata 3 to 6, timestamp trigger value */
-	/* TX state machine must be triggered at T0 - TX_START_DELAY for packet to start being emitted at T0 */
+	// metadata 3 to 6, timestamp trigger value
+	// TX state machine must be triggered at T0 - TX_START_DELAY for packet to start being emitted at T0
 	if (pkt_data.tx_mode == TIMESTAMPED)
 	{
 		count_trig = pkt_data.count_us - TX_START_DELAY;
@@ -1521,41 +1500,43 @@ int lgw_send(struct lgw_pkt_tx_s pkt_data) {
 			DEBUG_MSG("Info: packet will be sent without CRC\n");
 		}
 
-		/* metadata 10, payload size */
+		// metadata 10, payload size
 		buff[10] = pkt_data.size;
 
-		/* metadata 11, implicit header, modulation bandwidth, PPM offset & polarity */
+		// metadata 11, implicit header, modulation bandwidth, PPM offset & polarity
 		switch (pkt_data.bandwidth) {
 			case BW_125KHZ: buff[11] = 0; break;
 			case BW_250KHZ: buff[11] = 1; break;
 			case BW_500KHZ: buff[11] = 2; break;
-			default: DEBUG_PRINTF("ERROR: UNEXPECTED VALUE %d IN SWITCH STATEMENT\n", pkt_data.bandwidth);
-		}
-		if (pkt_data.no_header == true) {
-			buff[11] |= 0x04; /* set 'implicit header' bit */
-		}
-		if (SET_PPM_ON(pkt_data.bandwidth,pkt_data.datarate)) {
-			buff[11] |= 0x08; /* set 'PPM offset' bit at 1 */
-		}
-		if (pkt_data.invert_pol == true) {
-			buff[11] |= 0x10; /* set 'TX polarity' bit at 1 */
+			default: DEBUG_PRINTF("ERROR: UNEXPECTED VALUE %d IN SWITCH STATEMENT\n",
+				pkt_data.bandwidth);
 		}
 
-		/* metadata 12 & 13, LoRa preamble size */
-		if (pkt_data.preamble == 0) { /* if not explicit, use recommended LoRa preamble size */
+		if (pkt_data.no_header == true) {
+			buff[11] |= 0x04; 	// set 'implicit header' bit
+		}
+		if (SET_PPM_ON(pkt_data.bandwidth,pkt_data.datarate)) {
+			buff[11] |= 0x08; 	// set 'PPM offset' bit at 1
+		}
+		if (pkt_data.invert_pol == true) {
+			buff[11] |= 0x10; 	// set 'TX polarity' bit at 1
+		}
+
+		// metadata 12 & 13, LoRa preamble size
+		if (pkt_data.preamble == 0) { // if not explicit, use recommended LoRa preamble size
 			pkt_data.preamble = STD_LORA_PREAMBLE;
-		} else if (pkt_data.preamble < MIN_LORA_PREAMBLE) { /* enforce minimum preamble size */
+		} else if (pkt_data.preamble < MIN_LORA_PREAMBLE) { // enforce minimum preamble size
 			pkt_data.preamble = MIN_LORA_PREAMBLE;
 			DEBUG_MSG("Note: preamble length adjusted to respect minimum LoRa preamble size\n");
 		}
 		buff[12] = 0xFF & (pkt_data.preamble >> 8);
 		buff[13] = 0xFF & pkt_data.preamble;
 
-		/* metadata 14 & 15, not used */
+		// metadata 14 & 15, not used
 		buff[14] = 0;
 		buff[15] = 0;
 
-		/* MSB of RF frequency is now used in AGC firmware to implement large/narrow filtering in SX1257/55 */
+		// MSB of RF frequency is now used in AGC firmware to implement large/narrow filtering in SX1257/55 */
 		buff[0] &= 0x3F; /* Unset 2 MSBs of frequency code */
 		if (pkt_data.bandwidth == BW_500KHZ) {
 			buff[0] |= 0x80; /* Set MSB bit to enlarge analog filter for 500kHz BW */
@@ -1608,18 +1589,18 @@ int lgw_send(struct lgw_pkt_tx_s pkt_data) {
 		return LGW_HAL_ERROR;
 	}
 
-	/* copy payload from user struct to buffer containing metadata */
+	// copy payload from user struct to buffer containing metadata
 	memcpy((void *)(buff + payload_offset), (void *)(pkt_data.payload), pkt_data.size);
 
-	/* reset TX command flags */
+	// 设置发送标志
 	lgw_abort_tx();
 
-	/* put metadata + payload in the TX data buffer */
+	// 写入  数据(metadata + payload)到TX缓冲区
 	lgw_reg_w(LGW_TX_DATA_BUF_ADDR, 0);
 	lgw_reg_wb(LGW_TX_DATA_BUF_DATA, buff, transfer_size);
 	DEBUG_ARRAY(i, transfer_size, buff);
 
-	/* send data */
+	// 发送数据
 	switch(pkt_data.tx_mode) {
 		case IMMEDIATE:
 			lgw_reg_w(LGW_TX_TRIG_IMMEDIATE, 1);
@@ -1641,7 +1622,6 @@ int lgw_send(struct lgw_pkt_tx_s pkt_data) {
 	return LGW_HAL_SUCCESS;
 }
 
-/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 
 int lgw_status(uint8_t select, uint8_t *code) {
 	int32_t read_value;
@@ -1672,8 +1652,6 @@ int lgw_status(uint8_t select, uint8_t *code) {
 	}
 
 }
-
-/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 
 int lgw_abort_tx(void) {
 	int i;

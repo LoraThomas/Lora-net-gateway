@@ -1025,12 +1025,14 @@ int main(void)
 	pthread_cancel(thrid_gps); /* don't wait for GPS thread */
 	pthread_cancel(thrid_valid); /* don't wait for validation thread */
 
-	/* if an exit signal was received, try to quit properly */
+	// if an exit signal was received, try to quit properly
 	if (exit_sig) {
-		/* shut down network sockets */
+
+		// 挂断网络     Sockets
 		shutdown(sock_up, SHUT_RDWR);
 		shutdown(sock_down, SHUT_RDWR);
-		/* stop the hardware */
+
+		// 关闭硬件
 		i = lgw_stop();
 		if (i == LGW_HAL_SUCCESS) {
 			MSG("INFO: concentrator stopped successfully\n");
@@ -1043,50 +1045,47 @@ int main(void)
 	exit(EXIT_SUCCESS);
 }
 
-/* -------------------------------------------------------------------------- */
-/* --- THREAD 1: RECEIVING PACKETS AND FORWARDING THEM ---------------------- */
-
+// 上行处理线程 (GW -> NS)
 void thread_up(void) {
 	int i, j;
-	unsigned pkt_in_dgram; /* nb on Lora packet in the current datagram */
+	unsigned pkt_in_dgram; // nb on Lora packet in the current datagram
 
-	/* allocate memory for packet fetching and processing */
-	struct lgw_pkt_rx_s rxpkt[NB_PKT_MAX]; /* array containing inbound packets + metadata */
+	struct lgw_pkt_rx_s rxpkt[NB_PKT_MAX];
 	struct lgw_pkt_rx_s *p;
 	int nb_pkt;
 
-	/* local copy of GPS time reference */
-	bool ref_ok = false; /* determine if GPS time reference must be used or not */
-	struct tref local_ref; /* time reference used for UTC <-> timestamp conversion */
+	// local copy of GPS time reference
+	bool ref_ok = false; 	// determine if GPS time reference must be used or not
+	struct tref local_ref; 	// time reference used for UTC <-> timestamp conversion
 
-	/* data buffers */
-	uint8_t buff_up[TX_BUFF_SIZE]; /* buffer to compose the upstream packet */
+	// data buffers
+	uint8_t buff_up[TX_BUFF_SIZE];
 	int buff_index;
-	uint8_t buff_ack[32]; /* buffer to receive acknowledges */
+	uint8_t buff_ack[32];
 
-	/* protocol variables */
-	uint8_t token_h; /* random token for acknowledgement matching */
-	uint8_t token_l; /* random token for acknowledgement matching */
+	// protocol variables
+	uint8_t token_h;
+	uint8_t token_l;
 
-	/* ping measurement variables */
+	// ping measurement variables
 	struct timespec send_time;
 	struct timespec recv_time;
 
-	/* GPS synchronization variables */
+	// GPS synchronization variables
 	struct timespec pkt_utc_time;
-	struct tm * x; /* broken-up UTC time */
+	struct tm * x; // broken-up UTC time
 
-	/* report management variable */
+	// report management variable
 	bool send_report = false;
 
-	/* set upstream socket RX timeout */
+	// set upstream socket RX timeout
 	i = setsockopt(sock_up, SOL_SOCKET, SO_RCVTIMEO, (void *)&push_timeout_half, sizeof push_timeout_half);
 	if (i != 0) {
 		MSG("ERROR: [up] setsockopt returned %s\n", strerror(errno));
 		exit(EXIT_FAILURE);
 	}
 
-	/* pre-fill the data buffer with fixed fields */
+	// pre-fill the data buffer with fixed fields
 	buff_up[0] = PROTOCOL_VERSION;
 	buff_up[3] = PKT_PUSH_DATA;
 	*(uint32_t *)(buff_up + 4) = net_mac_h;
@@ -1094,7 +1093,7 @@ void thread_up(void) {
 
 	while (!exit_sig && !quit_sig) {
 
-		/* fetch packets */
+		// fetch packets
 		pthread_mutex_lock(&mx_concent);
 		nb_pkt = lgw_receive(NB_PKT_MAX, rxpkt);
 		pthread_mutex_unlock(&mx_concent);
@@ -1103,17 +1102,18 @@ void thread_up(void) {
 			exit(EXIT_FAILURE);
 		}
 
-		/* check if there are status report to send */
-		send_report = report_ready; /* copy the variable so it doesn't change mid-function */
-		/* no mutex, we're only reading */
+		// check if there are status report to send
+		send_report = report_ready;
 
-		/* wait a short time if no packets, nor status report */
+		// no mutex, we're only reading
+
+		// wait a short time if no packets, nor status report
 		if ((nb_pkt == 0) && (send_report == false)) {
 			wait_ms(FETCH_SLEEP_MS);
 			continue;
 		}
 
-		/* get a copy of GPS time reference (avoid 1 mutex per packet) */
+		// get a copy of GPS time reference (avoid 1 mutex per packet)
 		if ((nb_pkt > 0) && (gps_enabled == true)) {
 			pthread_mutex_lock(&mx_timeref);
 			ref_ok = gps_ref_valid;
@@ -1123,23 +1123,25 @@ void thread_up(void) {
 			ref_ok = false;
 		}
 
-		/* start composing datagram with the header */
-		token_h = (uint8_t)rand(); /* random token */
-		token_l = (uint8_t)rand(); /* random token */
+		// start composing datagram with the header
+		token_h = (uint8_t)rand();
+		token_l = (uint8_t)rand();
 		buff_up[1] = token_h;
 		buff_up[2] = token_l;
-		buff_index = 12; /* 12-byte header */
+		buff_index = 12; // 12-byte header
 
-		/* start of JSON structure */
+		// start of JSON structure
 		memcpy((void *)(buff_up + buff_index), (void *)"{\"rxpk\":[", 9);
 		buff_index += 9;
 
-		/* serialize Lora packets metadata and payload */
+		// serialize Lora packets metadata and payload
 		pkt_in_dgram = 0;
 		for (i=0; i < nb_pkt; ++i) {
 			p = &rxpkt[i];
 
-			/* basic packet filtering */
+			MSG("TODO: ==> lgw_receive[%d] freq_hz=%d,bandwidth=%d\n", i, p->freq_hz, p->bandwidth);
+
+			// basic packet filtering
 			pthread_mutex_lock(&mx_meas_up);
 			meas_nb_rx_rcv += 1;
 			switch(p->status) {
@@ -1147,34 +1149,34 @@ void thread_up(void) {
 					meas_nb_rx_ok += 1;
 					if (!fwd_valid_pkt) {
 						pthread_mutex_unlock(&mx_meas_up);
-						continue; /* skip that packet */
+						continue;
 					}
 					break;
 				case STAT_CRC_BAD:
 					meas_nb_rx_bad += 1;
 					if (!fwd_error_pkt) {
 						pthread_mutex_unlock(&mx_meas_up);
-						continue; /* skip that packet */
+						continue;
 					}
 					break;
 				case STAT_NO_CRC:
 					meas_nb_rx_nocrc += 1;
 					if (!fwd_nocrc_pkt) {
 						pthread_mutex_unlock(&mx_meas_up);
-						continue; /* skip that packet */
+						continue;
 					}
 					break;
 				default:
-					MSG("WARNING: [up] received packet with unknown status %u (size %u, modulation %u, BW %u, DR %u, RSSI %.1f)\n", p->status, p->size, p->modulation, p->bandwidth, p->datarate, p->rssi);
+					MSG("WARNING: [up] received packet with unknown status %u (size %u, modulation %u, BW %u, DR %u, RSSI %.1f)\n",
+							p->status, p->size, p->modulation, p->bandwidth, p->datarate, p->rssi);
 					pthread_mutex_unlock(&mx_meas_up);
-					continue; /* skip that packet */
-					// exit(EXIT_FAILURE);
+					continue;
 			}
 			meas_up_pkt_fwd += 1;
 			meas_up_payload_byte += p->size;
 			pthread_mutex_unlock(&mx_meas_up);
 
-			/* Start of packet, add inter-packet separator if necessary */
+			// Start of packet, add inter-packet separator if necessary
 			if (pkt_in_dgram == 0) {
 				buff_up[buff_index] = '{';
 				++buff_index;
@@ -1184,7 +1186,7 @@ void thread_up(void) {
 				buff_index += 2;
 			}
 
-			/* RAW timestamp, 8-17 useful chars */
+			// RAW timestamp, 8-17 useful chars
 			j = snprintf((char *)(buff_up + buff_index), TX_BUFF_SIZE-buff_index, "\"tmst\":%u", p->count_us);
 			if (j > 0) {
 				buff_index += j;
@@ -1193,14 +1195,18 @@ void thread_up(void) {
 				exit(EXIT_FAILURE);
 			}
 
-			/* Packet RX time (GPS based), 37 useful chars */
+			// Packet RX time (GPS based), 37 useful chars
 			if (ref_ok == true) {
-				/* convert packet timestamp to UTC absolute time */
+				// convert packet timestamp to UTC absolute time
 				j = lgw_cnt2utc(local_ref, p->count_us, &pkt_utc_time);
 				if (j == LGW_GPS_SUCCESS) {
-					/* split the UNIX timestamp to its calendar components */
+					// split the UNIX timestamp to its calendar components
 					x = gmtime(&(pkt_utc_time.tv_sec));
-					j = snprintf((char *)(buff_up + buff_index), TX_BUFF_SIZE-buff_index, ",\"time\":\"%04i-%02i-%02iT%02i:%02i:%02i.%06liZ\"", (x->tm_year)+1900, (x->tm_mon)+1, x->tm_mday, x->tm_hour, x->tm_min, x->tm_sec, (pkt_utc_time.tv_nsec)/1000); /* ISO 8601 format */
+					j = snprintf((char *)(buff_up + buff_index), TX_BUFF_SIZE-buff_index,
+							",\"time\":\"%04i-%02i-%02iT%02i:%02i:%02i.%06liZ\"",
+							(x->tm_year)+1900, (x->tm_mon)+1, x->tm_mday, x->tm_hour, x->tm_min, x->tm_sec,
+							(pkt_utc_time.tv_nsec)/1000); // ISO 8601 format
+
 					if (j > 0) {
 						buff_index += j;
 					} else {
@@ -1211,7 +1217,9 @@ void thread_up(void) {
 			}
 
 			// Packet concentrator channel, RF chain & RX frequency, 34-36 useful chars
-			j = snprintf((char *)(buff_up + buff_index), TX_BUFF_SIZE-buff_index, ",\"chan\":%1u,\"rfch\":%1u,\"freq\":%.6lf", p->if_chain, p->rf_chain, ((double)p->freq_hz / 1e6));
+			j = snprintf((char *)(buff_up + buff_index), TX_BUFF_SIZE-buff_index,
+					",\"chan\":%1u,\"rfch\":%1u,\"freq\":%.6lf",
+					p->if_chain, p->rf_chain, ((double)p->freq_hz / 1e6));
 			if (j > 0) {
 				buff_index += j;
 			} else {
@@ -1240,12 +1248,12 @@ void thread_up(void) {
 					exit(EXIT_FAILURE);
 			}
 
-			/* Packet modulation, 13-14 useful chars */
+			// Packet modulation, 13-14 useful chars
 			if (p->modulation == MOD_LORA) {
 				memcpy((void *)(buff_up + buff_index), (void *)",\"modu\":\"LORA\"", 14);
 				buff_index += 14;
 
-				/* Lora datarate & bandwidth, 16-19 useful chars */
+				// Lora datarate & bandwidth, 16-19 useful chars
 				switch (p->datarate) {
 					case DR_LORA_SF7:
 						memcpy((void *)(buff_up + buff_index), (void *)",\"datr\":\"SF7", 12);
@@ -1277,6 +1285,7 @@ void thread_up(void) {
 						buff_index += 12;
 						exit(EXIT_FAILURE);
 				}
+
 				switch (p->bandwidth) {
 					case BW_125KHZ:
 						memcpy((void *)(buff_up + buff_index), (void *)"BW125\"", 6);
@@ -1297,7 +1306,7 @@ void thread_up(void) {
 						exit(EXIT_FAILURE);
 				}
 
-				/* Packet ECC coding rate, 11-13 useful chars */
+				// Packet ECC coding rate, 11-13 useful chars
 				switch (p->coderate) {
 					case CR_LORA_4_5:
 						memcpy((void *)(buff_up + buff_index), (void *)",\"codr\":\"4/5\"", 13);
@@ -1326,7 +1335,7 @@ void thread_up(void) {
 						exit(EXIT_FAILURE);
 				}
 
-				/* Lora SNR, 11-13 useful chars */
+				// Lora SNR, 11-13 useful chars
 				j = snprintf((char *)(buff_up + buff_index), TX_BUFF_SIZE-buff_index, ",\"lsnr\":%.1f", p->snr);
 				if (j > 0) {
 					buff_index += j;
@@ -1338,7 +1347,7 @@ void thread_up(void) {
 				memcpy((void *)(buff_up + buff_index), (void *)",\"modu\":\"FSK\"", 13);
 				buff_index += 13;
 
-				/* FSK datarate, 11-14 useful chars */
+				// FSK datarate, 11-14 useful chars
 				j = snprintf((char *)(buff_up + buff_index), TX_BUFF_SIZE-buff_index, ",\"datr\":%u", p->datarate);
 				if (j > 0) {
 					buff_index += j;
@@ -1351,8 +1360,9 @@ void thread_up(void) {
 				exit(EXIT_FAILURE);
 			}
 
-			/* Packet RSSI, payload size, 18-23 useful chars */
-			j = snprintf((char *)(buff_up + buff_index), TX_BUFF_SIZE-buff_index, ",\"rssi\":%.0f,\"size\":%u", p->rssi, p->size);
+			// Packet RSSI, payload size, 18-23 useful chars
+			j = snprintf((char *)(buff_up + buff_index), TX_BUFF_SIZE-buff_index,
+					",\"rssi\":%.0f,\"size\":%u", p->rssi, p->size);
 			if (j > 0) {
 				buff_index += j;
 			} else {
@@ -1360,10 +1370,12 @@ void thread_up(void) {
 				exit(EXIT_FAILURE);
 			}
 
-			/* Packet base64-encoded payload, 14-350 useful chars */
+			// Packet base64-encoded payload, 14-350 useful chars
 			memcpy((void *)(buff_up + buff_index), (void *)",\"data\":\"", 9);
 			buff_index += 9;
-			j = bin_to_b64(p->payload, p->size, (char *)(buff_up + buff_index), 341); /* 255 bytes = 340 chars in b64 + null char */
+
+			// 255 bytes = 340 chars in b64 + null char
+			j = bin_to_b64(p->payload, p->size, (char *)(buff_up + buff_index), 341);
 			if (j>=0) {
 				buff_index += j;
 			} else {
@@ -1373,33 +1385,35 @@ void thread_up(void) {
 			buff_up[buff_index] = '"';
 			++buff_index;
 
-			/* End of packet serialization */
+			// End of packet serialization
 			buff_up[buff_index] = '}';
 			++buff_index;
 			++pkt_in_dgram;
 		}
 
-		/* restart fetch sequence without sending empty JSON if all packets have been filtered out */
+		// restart fetch sequence without sending empty JSON if all packets have been filtered out
 		if (pkt_in_dgram == 0) {
 			if (send_report == true) {
-				/* need to clean up the beginning of the payload */
-				buff_index -= 8; /* removes "rxpk":[ */
+				// need to clean up the beginning of the payload
+				buff_index -= 8; // removes "rxpk":[
 			} else {
-				/* all packet have been filtered out and no report, restart loop */
+				// all packet have been filtered out and no report, restart loop
 				continue;
 			}
 		} else {
-			/* end of packet array */
+
+			// end of packet array
 			buff_up[buff_index] = ']';
 			++buff_index;
-			/* add separator if needed */
+
+			// add separator if needed
 			if (send_report == true) {
 				buff_up[buff_index] = ',';
 				++buff_index;
 			}
 		}
 
-		/* add status report if a new one is available */
+		// add status report if a new one is available
 		if (send_report == true) {
 			pthread_mutex_lock(&mx_stat_rep);
 			report_ready = false;
@@ -1413,38 +1427,39 @@ void thread_up(void) {
 			}
 		}
 
-		/* end of JSON datagram payload */
+		// end of JSON datagram payload
 		buff_up[buff_index] = '}';
 		++buff_index;
-		buff_up[buff_index] = 0; /* add string terminator, for safety */
+		buff_up[buff_index] = 0;
 
-		// printf("\nJSON up: %s\n", (char *)(buff_up + 12)); /* DEBUG: display JSON payload */
+		// printf("\nJSON up: %s\n", (char *)(buff_up + 12));
 
-		/* send datagram to server */
+		// send datagram to server
 		send(sock_up, (void *)buff_up, buff_index, 0);
 		clock_gettime(CLOCK_MONOTONIC, &send_time);
 		pthread_mutex_lock(&mx_meas_up);
 		meas_up_dgram_sent += 1;
 		meas_up_network_byte += buff_index;
 
-		/* wait for acknowledge (in 2 times, to catch extra packets) */
+		// wait for acknowledge (in 2 times, to catch extra packets)
 		for (i=0; i<2; ++i) {
-			j = recv(sock_up, (void *)buff_ack, sizeof buff_ack, 0);
+			j = recv(sock_up, (void *)buff_ack, sizeof(buff_ack), 0);
 			clock_gettime(CLOCK_MONOTONIC, &recv_time);
 			if (j == -1) {
-				if (errno == EAGAIN) { /* timeout */
+				if (errno == EAGAIN) { // timeout
 					continue;
-				} else { /* server connection error */
+				} else { 			   // server connection error
 					break;
 				}
 			} else if ((j < 4) || (buff_ack[0] != PROTOCOL_VERSION) || (buff_ack[3] != PKT_PUSH_ACK)) {
-				//MSG("WARNING: [up] ignored invalid non-ACL packet\n");
+				// MSG("WARNING: [up] ignored invalid non-ACL packet\n");
 				continue;
 			} else if ((buff_ack[1] != token_h) || (buff_ack[2] != token_l)) {
-				//MSG("WARNING: [up] ignored out-of sync ACK packet\n");
+				// MSG("WARNING: [up] ignored out-of sync ACK packet\n");
 				continue;
 			} else {
-				MSG("INFO: [up] PUSH_ACK received in %i ms\n", (int)(1000 * difftimespec(recv_time, send_time)));
+				MSG("INFO: [up] PUSH_ACK received in %i ms\n",
+					(int)(1000 * difftimespec(recv_time, send_time)));
 				meas_up_ack_rcv += 1;
 				break;
 			}
@@ -1454,52 +1469,49 @@ void thread_up(void) {
 	MSG("\nINFO: End of upstream thread\n");
 }
 
+// 下行处理线程 (NS -> GW)
 void thread_down(void) {
 	int i;
 
-	// configuration and metadata for an outbound packet
 	struct lgw_pkt_tx_s txpkt;
 	bool sent_immediate = false;
 
-	// local timekeeping variables
-	struct timespec send_time; // time of the pull request
-	struct timespec recv_time; // time of return from recv socket call
+	struct timespec send_time;
+	struct timespec recv_time;
 
 	// data buffers
-	uint8_t buff_down[1000]; // buffer to receive downstream packets
-	uint8_t buff_req[12]; 	 // buffer to compose pull requests
+	uint8_t buff_down[1000];
+	uint8_t buff_req[12];
 	int msg_len;
 
-	// protocol variables
-	uint8_t token_h; 		// random token for acknowledgement matching
-	uint8_t token_l; 		// random token for acknowledgement matching
-	bool req_ack = false; 	// keep track of whether PULL_DATA was acknowledged or not
+	uint8_t token_h;
+	uint8_t token_l;
+	bool req_ack = false;
 
 	// JSON parsing variables
 	JSON_Value *root_val = NULL;
 	JSON_Object *txpk_obj = NULL;
-	JSON_Value *val = NULL; // needed to detect the absence of some fields
-	const char *str; 		// pointer to sub-strings in the JSON data
+	JSON_Value *val = NULL;
+	const char *str;
 	short x0, x1;
 	short x2, x3, x4;
 	double x5, x6;
 
-	// variables to send on UTC timestamp
-	struct tref local_ref; 	// time reference used for UTC <-> timestamp conversion
-	struct tm utc_vector; 	// for collecting the elements of the UTC time
-	struct timespec utc_tx; // UTC time that needs to be converted to timestamp
+	struct tref local_ref;
+	struct tm utc_vector;
+	struct timespec utc_tx;
 
 	// auto-quit variable
 	uint32_t autoquit_cnt = 0; // count the number of PULL_DATA sent since the latest PULL_ACK
 
-	// set downstream socket RX timeout
-	i = setsockopt(sock_down, SOL_SOCKET, SO_RCVTIMEO, (void *)&pull_timeout, sizeof pull_timeout);
+	// 设置  接收超时
+	i = setsockopt(sock_down, SOL_SOCKET, SO_RCVTIMEO, (void *)&pull_timeout, sizeof(pull_timeout));
 	if (i != 0) {
 		MSG("ERROR: [down] setsockopt returned %s\n", strerror(errno));
 		exit(EXIT_FAILURE);
 	}
 
-	// pre-fill the pull request buffer with fixed fields
+	// 先填充固定值
 	buff_req[0] = PROTOCOL_VERSION;
 	buff_req[3] = PKT_PULL_DATA;
 	*(uint32_t *)(buff_req + 4) = net_mac_h;
@@ -1510,41 +1522,41 @@ void thread_down(void) {
 		// auto-quit if the threshold is crossed
 		if ((autoquit_threshold > 0) && (autoquit_cnt >= autoquit_threshold)) {
 			exit_sig = true;
-			MSG("INFO: [down] the last %u PULL_DATA were not ACKed, exiting application\n",
-				autoquit_threshold);
+			MSG("INFO: [down] the last %u PULL_DATA were not ACKed, exiting application\n", autoquit_threshold);
 			break;
 		}
 
-		// generate random token for request
+		// 生成随机数
 		token_h = (uint8_t)rand();
 		token_l = (uint8_t)rand();
 		buff_req[1] = token_h;
 		buff_req[2] = token_l;
 
-		// send PULL request and record time
-		send(sock_down, (void *)buff_req, sizeof buff_req, 0);
+		// 发送 PULL 请求并且记录时间
+		send(sock_down, (void *)buff_req, sizeof(buff_req), 0);
 		clock_gettime(CLOCK_MONOTONIC, &send_time);
+
 		pthread_mutex_lock(&mx_meas_dw);
 		meas_dw_pull_sent += 1;
 		pthread_mutex_unlock(&mx_meas_dw);
+
 		req_ack = false;
 		autoquit_cnt++;
 
-		// listen to packets and process them until a new PULL request must be sent
+		// 监听或者处理数据包，直到必须发送新的PULL请求
 		recv_time = send_time;
 		while ((int)difftimespec(recv_time, send_time) < keepalive_time) {
 
-			// try to receive a datagram
+			// 尝试接收 NS 的数据包, 前面已经设置接收超时
 			msg_len = recv(sock_down, (void *)buff_down, (sizeof buff_down)-1, 0);
 			clock_gettime(CLOCK_MONOTONIC, &recv_time);
 
-			// if no network message was received, got back to listening sock_down socket
+			// 没有数据接收到，接着监听数据
 			if (msg_len == -1) {
-				// MSG("WARNING: [down] recv returned %s\n", strerror(errno));
 				continue;
 			}
 
-			// if the datagram does not respect protocol, just ignore it
+			// 不是应答数据包，忽略数据
 			if ((msg_len < 4) || (buff_down[0] != PROTOCOL_VERSION) ||
 				((buff_down[3] != PKT_PULL_RESP) && (buff_down[3] != PKT_PULL_ACK))) {
 
@@ -1563,8 +1575,7 @@ void thread_down(void) {
 						pthread_mutex_lock(&mx_meas_dw);
 						meas_dw_ack_rcv += 1;
 						pthread_mutex_unlock(&mx_meas_dw);
-						MSG("INFO: [down] PULL_ACK received in %i ms\n",
-							(int)(1000 * difftimespec(recv_time, send_time)));
+						MSG("INFO: [down] PULL_ACK received in %i ms\n", (int)(1000 * difftimespec(recv_time, send_time)));
 					}
 				} else {
 					MSG("INFO: [down] received out-of-sync ACK\n");
@@ -1574,18 +1585,18 @@ void thread_down(void) {
 
 			// the datagram is a PULL_RESP
 			buff_down[msg_len] = 0; // add string terminator, just to be safe
-			MSG("INFO: [down] PULL_RESP received :)\n"); /* very verbose */
-			// printf("\nJSON down: %s\n", (char *)(buff_down + 4)); /* DEBUG: display JSON payload */
+			MSG("INFO: [down] PULL_RESP received :)\n");
+			// printf("\nJSON down: %s\n", (char *)(buff_down + 4)); // DEBUG: display JSON payload
 
-			/* initialize TX struct and try to parse JSON */
-			memset(&txpkt, 0, sizeof txpkt);
-			root_val = json_parse_string_with_comments((const char *)(buff_down + 4)); /* JSON offset */
+			// initialize TX struct and try to parse JSON
+			memset(&txpkt, 0, sizeof(txpkt));
+			root_val = json_parse_string_with_comments((const char *)(buff_down + 4)); // JSON offset
 			if (root_val == NULL) {
 				MSG("WARNING: [down] invalid JSON, TX aborted\n");
 				continue;
 			}
 
-			/* look for JSON sub-object 'txpk' */
+			// look for JSON sub-object 'txpk'
 			txpk_obj = json_object_get_object(json_value_get_object(root_val), "txpk");
 			if (txpk_obj == NULL) {
 				MSG("WARNING: [down] no \"txpk\" object in JSON, TX aborted\n");
@@ -1593,27 +1604,28 @@ void thread_down(void) {
 				continue;
 			}
 
-			/* Parse "immediate" tag, or target timestamp, or UTC time to be converted by GPS (mandatory) */
-			i = json_object_get_boolean(txpk_obj,"imme"); /* can be 1 if true, 0 if false, or -1 if not a JSON boolean */
+			// Parse "immediate" tag, or target timestamp, or UTC time to be converted by GPS (mandatory)
+			i = json_object_get_boolean(txpk_obj,"imme"); // can be 1 if true, 0 if false, or -1 if not a JSON boolean
 			if (i == 1) {
-				/* TX procedure: send immediately */
+				// TX procedure: send immediately
 				sent_immediate = true;
 				MSG("INFO: [down] a packet will be sent in \"immediate\" mode\n");
 			} else {
 				sent_immediate = false;
 				val = json_object_get_value(txpk_obj,"tmst");
 				if (val != NULL) {
-					/* TX procedure: send on timestamp value */
+					// TX procedure: send on timestamp value
 					txpkt.count_us = (uint32_t)json_value_get_number(val);
 					MSG("INFO: [down] a packet will be sent on timestamp value %u\n", txpkt.count_us);
 				} else {
-					/* TX procedure: send on UTC time (converted to timestamp value) */
+					// TX procedure: send on UTC time (converted to timestamp value)
 					str = json_object_get_string(txpk_obj, "time");
 					if (str == NULL) {
 						MSG("WARNING: [down] no mandatory \"txpk.tmst\" or \"txpk.time\" objects in JSON, TX aborted\n");
 						json_value_free(root_val);
 						continue;
 					}
+
 					if (gps_enabled == true) {
 						pthread_mutex_lock(&mx_timeref);
 						if (gps_ref_valid == true) {
@@ -1637,17 +1649,18 @@ void thread_down(void) {
 						json_value_free(root_val);
 						continue;
 					}
-					x5 = modf(x5, &x6); /* x6 get the integer part of x5, x5 the fractional part */
-					utc_vector.tm_year = x0 - 1900; /* years since 1900 */
-					utc_vector.tm_mon = x1 - 1; /* months since January */
-					utc_vector.tm_mday = x2; /* day of the month 1-31 */
-					utc_vector.tm_hour = x3; /* hours since midnight */
-					utc_vector.tm_min = x4; /* minutes after the hour */
+
+					x5 = modf(x5, &x6); 				// x6 get the integer part of x5, x5 the fractional part
+					utc_vector.tm_year = x0 - 1900; 	// years since 1900
+					utc_vector.tm_mon = x1 - 1; 		// months since January
+					utc_vector.tm_mday = x2; 			// day of the month 1-31
+					utc_vector.tm_hour = x3; 			// hours since midnight
+					utc_vector.tm_min = x4; 			// minutes after the hour
 					utc_vector.tm_sec = (int)x6;
 					utc_tx.tv_sec = mktime(&utc_vector) - timezone;
 					utc_tx.tv_nsec = (long)(1e9 * x5);
 
-					/* transform UTC time to timestamp */
+					// transform UTC time to timestamp
 					i = lgw_utc2cnt(local_ref, utc_tx, &(txpkt.count_us));
 					if (i != LGW_GPS_SUCCESS) {
 						MSG("WARNING: [down] could not convert UTC time to timestamp, TX aborted\n");
@@ -1659,13 +1672,13 @@ void thread_down(void) {
 				}
 			}
 
-			/* Parse "No CRC" flag (optional field) */
+			// Parse "No CRC" flag (optional field)
 			val = json_object_get_value(txpk_obj,"ncrc");
 			if (val != NULL) {
 				txpkt.no_crc = (bool)json_value_get_boolean(val);
 			}
 
-			/* parse target frequency (mandatory) */
+			// parse target frequency (mandatory)
 			val = json_object_get_value(txpk_obj,"freq");
 			if (val == NULL) {
 				MSG("WARNING: [down] no mandatory \"txpk.freq\" object in JSON, TX aborted\n");
@@ -1736,13 +1749,14 @@ void thread_down(void) {
 						continue;
 				}
 
-				/* Parse ECC coding rate (optional field) */
+				// Parse ECC coding rate (optional field)
 				str = json_object_get_string(txpk_obj, "codr");
 				if (str == NULL) {
 					MSG("WARNING: [down] no mandatory \"txpk.codr\" object in json, TX aborted\n");
 					json_value_free(root_val);
 					continue;
 				}
+
 				if      (strcmp(str, "4/5") == 0) txpkt.coderate = CR_LORA_4_5;
 				else if (strcmp(str, "4/6") == 0) txpkt.coderate = CR_LORA_4_6;
 				else if (strcmp(str, "2/3") == 0) txpkt.coderate = CR_LORA_4_6;
@@ -1775,10 +1789,10 @@ void thread_down(void) {
 				}
 
 			} else if (strcmp(str, "FSK") == 0) {
-				/* FSK modulation */
+				// FSK modulation
 				txpkt.modulation = MOD_FSK;
 
-				/* parse FSK bitrate (mandatory) */
+				// parse FSK bitrate (mandatory)
 				val = json_object_get_value(txpk_obj,"datr");
 				if (val == NULL) {
 					MSG("WARNING: [down] no mandatory \"txpk.datr\" object in JSON, TX aborted\n");
@@ -1787,16 +1801,18 @@ void thread_down(void) {
 				}
 				txpkt.datarate = (uint32_t)(json_value_get_number(val));
 
-				/* parse frequency deviation (mandatory) */
+				// parse frequency deviation (mandatory)
 				val = json_object_get_value(txpk_obj,"fdev");
 				if (val == NULL) {
 					MSG("WARNING: [down] no mandatory \"txpk.fdev\" object in JSON, TX aborted\n");
 					json_value_free(root_val);
 					continue;
 				}
-				txpkt.f_dev = (uint8_t)(json_value_get_number(val) / 1000.0); /* JSON value in Hz, txpkt.f_dev in kHz */
 
-				/* parse FSK preamble length (optional field, optimum min value enforced) */
+				// JSON value in Hz, txpkt.f_dev in kHz
+				txpkt.f_dev = (uint8_t)(json_value_get_number(val) / 1000.0);
+
+				// parse FSK preamble length (optional field, optimum min value enforced)
 				val = json_object_get_value(txpk_obj,"prea");
 				if (val != NULL) {
 					i = (int)json_value_get_number(val);
@@ -1815,7 +1831,7 @@ void thread_down(void) {
 				continue;
 			}
 
-			/* Parse payload length (mandatory) */
+			// Parse payload length (mandatory)
 			val = json_object_get_value(txpk_obj,"size");
 			if (val == NULL) {
 				MSG("WARNING: [down] no mandatory \"txpk.size\" object in JSON, TX aborted\n");
@@ -1824,38 +1840,42 @@ void thread_down(void) {
 			}
 			txpkt.size = (uint16_t)json_value_get_number(val);
 
-			/* Parse payload data (mandatory) */
+			// Parse payload data (mandatory)
 			str = json_object_get_string(txpk_obj, "data");
 			if (str == NULL) {
 				MSG("WARNING: [down] no mandatory \"txpk.data\" object in JSON, TX aborted\n");
 				json_value_free(root_val);
 				continue;
 			}
+
 			i = b64_to_bin(str, strlen(str), txpkt.payload, sizeof txpkt.payload);
 			if (i != txpkt.size) {
 				MSG("WARNING: [down] mismatch between .size and .data size once converter to binary\n");
 			}
 
-			/* free the JSON parse tree from memory */
+			// free the JSON parse tree from memory
 			json_value_free(root_val);
 
-			/* select TX mode */
+			// select TX mode
 			if (sent_immediate) {
 				txpkt.tx_mode = IMMEDIATE;
 			} else {
 				txpkt.tx_mode = TIMESTAMPED;
 			}
 
-			/* record measurement data */
+			// record measurement data
 			pthread_mutex_lock(&mx_meas_dw);
-			meas_dw_dgram_rcv += 1; /* count only datagrams with no JSON errors */
-			meas_dw_network_byte += msg_len; /* meas_dw_network_byte */
+			meas_dw_dgram_rcv += 1; 		 // count only datagrams with no JSON errors
+			meas_dw_network_byte += msg_len; // meas_dw_network_byte
 			meas_dw_payload_byte += txpkt.size;
 
-			/* transfer data and metadata to the concentrator, and schedule TX */
-			pthread_mutex_lock(&mx_concent); /* may have to wait for a fetch to finish */
+			MSG("TODO: ==> lgw_send freq_hz=%d,bandwidth=%d\n", txpkt.freq_hz, txpkt.bandwidth);
+
+			// transfer data and metadata to the concentrator, and schedule TX
+			pthread_mutex_lock(&mx_concent);
+			// 开始发送数据
 			i = lgw_send(txpkt);
-			pthread_mutex_unlock(&mx_concent); /* free concentrator ASAP */
+			pthread_mutex_unlock(&mx_concent);
 			if (i == LGW_HAL_ERROR) {
 				meas_nb_tx_fail += 1;
 				pthread_mutex_unlock(&mx_meas_dw);
@@ -1873,9 +1893,7 @@ void thread_down(void) {
 
 void thread_gps(void) {
 	int i;
-
-	// serial variables
-	char serial_buff[128]; // buffer to receive GPS data
+	char serial_buff[128];
 	ssize_t nb_char;
 
 	// variables for PPM pulse GPS synchronization
@@ -1947,6 +1965,7 @@ void thread_gps(void) {
 	MSG("\nINFO: End of GPS thread\n");
 }
 
+// 判断 GPS 时候正常工作线程
 void thread_valid(void) {
 	long gps_ref_age = 0;
 
